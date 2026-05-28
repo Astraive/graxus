@@ -150,6 +150,17 @@ enum Commands {
     Serve,
     /// List detected dependencies
     Deps,
+    /// Rollback an edit snapshot
+    Rollback {
+        /// Snapshot ID (or prefix)
+        snapshot_id: String,
+        /// Preview files to restore
+        #[arg(long)]
+        preview: bool,
+        /// Actually restore files
+        #[arg(long)]
+        apply: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -312,6 +323,7 @@ fn main() {
         },
         Commands::Serve => commands::serve::run(),
         Commands::Deps => commands::deps_cmd::run(),
+        Commands::Rollback { snapshot_id, preview, apply } => commands::rollback::run(&snapshot_id, preview, apply),
     };
 
     if let Err(e) = result {

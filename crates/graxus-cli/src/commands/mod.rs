@@ -20,3 +20,4 @@ pub mod search;
 pub mod generate;
 pub mod serve;
 pub mod deps_cmd;
+pub mod rollback;
