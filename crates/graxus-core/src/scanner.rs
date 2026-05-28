@@ -105,6 +105,74 @@ fn hash_file(path: &Path) -> Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+/// Diff between old and new scan results.
+#[derive(Debug, Clone)]
+pub struct FileDiff {
+    pub added: Vec<ScannedFile>,
+    pub modified: Vec<ScannedFile>,
+    pub deleted: Vec<String>, // relative paths
+}
+
+/// Compare old scan with new scan to find changed files.
+pub fn compute_diff(old_files: &[ScannedFile], new_files: &[ScannedFile]) -> FileDiff {
+    let old_map: HashMap<&str, &ScannedFile> = old_files
+        .iter()
+        .map(|f| (f.relative_path.as_str(), f))
+        .collect();
+    let new_map: HashMap<&str, &ScannedFile> = new_files
+        .iter()
+        .map(|f| (f.relative_path.as_str(), f))
+        .collect();
+
+    let mut added = Vec::new();
+    let mut modified = Vec::new();
+    let mut deleted = Vec::new();
+
+    // Find added and modified files
+    for (path, new_file) in &new_map {
+        match old_map.get(path) {
+            Some(old_file) => {
+                if old_file.hash != new_file.hash {
+                    modified.push((*new_file).clone());
+                }
+            }
+            None => {
+                added.push((*new_file).clone());
+            }
+        }
+    }
+
+    // Find deleted files
+    for path in old_map.keys() {
+        if !new_map.contains_key(path) {
+            deleted.push(path.to_string());
+        }
+    }
+
+    FileDiff { added, modified, deleted }
+}
+
+/// Load saved file list from .graxus/files.json
+pub fn load_saved_files(graxus_dir: &Path) -> Option<Vec<ScannedFile>> {
+    let path = graxus_dir.join("files.json");
+    if path.exists() {
+        let content = std::fs::read_to_string(&path).ok()?;
+        serde_json::from_str(&content).ok()
+    } else {
+        None
+    }
+}
+
+/// Save file list to .graxus/files.json
+pub fn save_saved_files(graxus_dir: &Path, files: &[ScannedFile]) -> Result<()> {
+    let path = graxus_dir.join("files.json");
+    let json = serde_json::to_string_pretty(files)?;
+    std::fs::write(&path, json)?;
+    Ok(())
+}
+
+use std::collections::HashMap;
+
 /// Scan and separate files into docs and code categories.
 pub fn scan_categorized(
     root: &Path,

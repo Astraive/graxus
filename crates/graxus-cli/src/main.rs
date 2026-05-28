@@ -58,6 +58,16 @@ enum Commands {
         json: bool,
     },
 
+    /// Incremental update — only re-index changed files
+    Update {
+        /// Force full re-index
+        #[arg(long)]
+        full: bool,
+        /// Show what would change without updating
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Docs graph operations
     Graph {
         #[command(subcommand)]
@@ -577,7 +587,8 @@ fn main() {
         Commands::Index { docs_only, code_only, include, exclude, lang, max_files } => {
             commands::index::run()
         }
-        Commands::Status { json } => commands::status::run(),
+        Commands::Status { json: _ } => commands::status::run(),
+        Commands::Update { full, dry_run } => commands::update::run(dry_run, full),
         Commands::Graph { sub } => match sub {
             GraphCmd::Docs { json, file, tag: _, max_notes: _, depth: _ } => {
                 commands::graph::run_docs(json, file.as_deref())
