@@ -17,6 +17,7 @@ graxus-agent-api = { path = "../graxus-agent-api" }
 graxus-embed = { path = "../graxus-embed" }
 graxus-llm = { path = "../graxus-llm" }
 graxus-server = { path = "../graxus-server" }
+graxus-viz = { path = "../graxus-viz" }
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true

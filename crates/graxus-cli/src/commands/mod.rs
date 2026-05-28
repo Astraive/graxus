@@ -22,3 +22,4 @@ pub mod serve;
 pub mod deps_cmd;
 pub mod rollback;
 pub mod regex_search;
+pub mod visualize;

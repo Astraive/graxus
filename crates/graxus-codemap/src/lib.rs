@@ -14,11 +14,55 @@ pub mod resolver;
 // ── Enums ──────────────────────────────────────────────────────────────────
 
 /// Numeric confidence score (0.0 to 100.0).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// Custom deserializer handles both old string format ("high", "low") and new object format.
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct ConfidenceScore {
     pub score: f64,
     pub label: ConfidenceLabel,
     pub method: ResolutionMethod,
+}
+
+impl<'de> Deserialize<'de> for ConfidenceScore {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de;
+
+        struct ConfidenceVisitor;
+
+        impl<'de> de::Visitor<'de> for ConfidenceVisitor {
+            type Value = ConfidenceScore;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a string (\"high\", \"medium\", \"low\", \"unknown\") or object {score, label, method}")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<ConfidenceScore, E> {
+                Ok(match v.to_lowercase().as_str() {
+                    "high" => ConfidenceScore::new(85.0, ResolutionMethod::PathMatchOnly),
+                    "medium" => ConfidenceScore::new(65.0, ResolutionMethod::PathMatchOnly),
+                    "low" => ConfidenceScore::new(40.0, ResolutionMethod::FuzzySymbolMatch),
+                    _ => ConfidenceScore::unresolved(),
+                })
+            }
+
+            fn visit_map<M: de::MapAccess<'de>>(self, mut map: M) -> Result<ConfidenceScore, M::Error> {
+                let mut score: Option<f64> = None;
+                let mut label: Option<ConfidenceLabel> = None;
+                let mut method: Option<ResolutionMethod> = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "score" => score = Some(map.next_value()?),
+                        "label" => { let _: serde_json::Value = map.next_value()?; }
+                        "method" => { let _: serde_json::Value = map.next_value()?; }
+                        _ => { let _: serde_json::Value = map.next_value()?; }
+                    }
+                }
+                let s = score.unwrap_or(0.0);
+                Ok(ConfidenceScore::new(s, ResolutionMethod::Unresolved))
+            }
+        }
+
+        deserializer.deserialize_any(ConfidenceVisitor)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

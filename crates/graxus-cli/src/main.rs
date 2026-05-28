@@ -328,6 +328,12 @@ enum Commands {
         context_lines: usize,
     },
 
+    /// Generate HTML visualizations
+    Visualize {
+        #[command(subcommand)]
+        sub: VisualizeCmd,
+    },
+
     /// Rollback an edit snapshot
     Rollback {
         /// Snapshot ID (or prefix)
@@ -338,6 +344,54 @@ enum Commands {
         /// Actually restore files
         #[arg(long)]
         apply: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum VisualizeCmd {
+    /// Generate docs graph visualization
+    Docs {
+        /// Output directory
+        #[arg(long)]
+        output: Option<String>,
+    },
+    /// Generate codemap visualization
+    Codemap {
+        /// Output directory
+        #[arg(long)]
+        output: Option<String>,
+    },
+    /// Generate call graph visualization
+    Callgraph {
+        /// Output directory
+        #[arg(long)]
+        output: Option<String>,
+    },
+    /// Generate blast radius visualization
+    Impact {
+        /// Target symbol or file
+        target: String,
+        /// Output directory
+        #[arg(long)]
+        output: Option<String>,
+    },
+    /// Generate docs-code bridge visualization
+    Bridge {
+        /// Output directory
+        #[arg(long)]
+        output: Option<String>,
+    },
+    /// Generate dependency graph visualization
+    Deps {
+        /// Output directory
+        #[arg(long)]
+        output: Option<String>,
+    },
+    /// Generate all visualizations
+    All {
+        /// Output directory
+        #[arg(long)]
+        output: Option<String>,
     },
 }
 
@@ -576,6 +630,15 @@ fn main() {
         Commands::Serve => commands::serve::run(),
         Commands::Deps { json: _ } => commands::deps_cmd::run(),
         Commands::Regex { pattern, docs, code, max_results, context_lines: _ } => commands::regex_search::run(&pattern, docs, code, max_results),
+        Commands::Visualize { sub } => match sub {
+            VisualizeCmd::Docs { output } => commands::visualize::run_docs(output.as_deref()),
+            VisualizeCmd::Codemap { output } => commands::visualize::run_codemap(output.as_deref()),
+            VisualizeCmd::Callgraph { output } => commands::visualize::run_callgraph(output.as_deref()),
+            VisualizeCmd::Impact { target, output } => commands::visualize::run_impact(&target, output.as_deref()),
+            VisualizeCmd::Bridge { output } => commands::visualize::run_bridge(output.as_deref()),
+            VisualizeCmd::Deps { output } => commands::visualize::run_deps(output.as_deref()),
+            VisualizeCmd::All { output } => commands::visualize::run_all(output.as_deref()),
+        },
         Commands::Rollback { snapshot_id, preview, apply } => commands::rollback::run(&snapshot_id, preview, apply),
     };
 

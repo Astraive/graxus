@@ -11,6 +11,7 @@ members = [
     "crates/graxus-embed",
     "crates/graxus-llm",
     "crates/graxus-server",
+    "crates/graxus-viz",
 ]
 
 [workspace.package]
