@@ -1,0 +1,16 @@
+[package]
+name = "graxus-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+graxus-core = { path = "../graxus-core" }
+graxus-docgraph = { path = "../graxus-docgraph" }
+graxus-codemap = { path = "../graxus-codemap" }
+graxus-index = { path = "../graxus-index" }
+graxus-agent-api = { path = "../graxus-agent-api" }
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util"] }

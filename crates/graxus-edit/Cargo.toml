@@ -1,0 +1,20 @@
+[package]
+name = "graxus-edit"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+regex.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+sha2.workspace = true
+graxus-core = { path = "../graxus-core" }
+graxus-index = { path = "../graxus-index" }
+
+[dev-dependencies]
+tempfile = "3"

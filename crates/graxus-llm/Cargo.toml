@@ -1,0 +1,16 @@
+[package]
+name = "graxus-llm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+graxus-core = { path = "../graxus-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+tokio = { version = "1", features = ["rt", "macros"] }
+async-trait = "0.1"
