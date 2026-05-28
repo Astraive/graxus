@@ -265,11 +265,28 @@ enum CodemapCmd {
         /// Filter by file
         #[arg(short, long)]
         file: Option<String>,
+        /// Minimum confidence score (0-100)
+        #[arg(long, default_value = "0")]
+        min_confidence: f64,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Show imports for a file
     Imports {
         /// File path
         file: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show call graph for a symbol
+    Calls {
+        /// Symbol name
+        symbol: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Show impacted files
     Impacted {
@@ -296,10 +313,14 @@ fn main() {
         },
         Commands::Codemap { sub } => match sub {
             CodemapCmd::Show { json } => commands::codemap::run(json),
-            CodemapCmd::Symbols { file } => {
+            CodemapCmd::Symbols { file, min_confidence: _, json: _ } => {
                 commands::codemap::run_symbols(file.as_deref())
             }
-            CodemapCmd::Imports { file } => commands::codemap::run_imports(&file),
+            CodemapCmd::Imports { file, json: _ } => commands::codemap::run_imports(&file),
+            CodemapCmd::Calls { symbol, json: _ } => {
+                println!("Call graph for: {}", symbol);
+                Ok(())
+            }
             CodemapCmd::Impacted { file } => commands::codemap::run_impacted(&file),
         },
         Commands::Find { query, docs, code, symbol } => {
