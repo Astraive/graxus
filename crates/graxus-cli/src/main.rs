@@ -150,6 +150,20 @@ enum Commands {
     Serve,
     /// List detected dependencies
     Deps,
+    /// Search with regex pattern
+    Regex {
+        /// Regex pattern
+        pattern: String,
+        /// Docs only
+        #[arg(long)]
+        docs: bool,
+        /// Code only
+        #[arg(long)]
+        code: bool,
+        /// Maximum results
+        #[arg(long, default_value = "200")]
+        max_results: usize,
+    },
     /// Rollback an edit snapshot
     Rollback {
         /// Snapshot ID (or prefix)
@@ -323,6 +337,7 @@ fn main() {
         },
         Commands::Serve => commands::serve::run(),
         Commands::Deps => commands::deps_cmd::run(),
+        Commands::Regex { pattern, docs, code, max_results } => commands::regex_search::run(&pattern, docs, code, max_results),
         Commands::Rollback { snapshot_id, preview, apply } => commands::rollback::run(&snapshot_id, preview, apply),
     };
 
