@@ -86,7 +86,16 @@ pub fn run_symbols(file: Option<&str>) -> Result<()> {
             let line = sym.get("line_start").and_then(|v| v.as_u64()).unwrap_or(0);
             let vis = sym.get("visibility").and_then(|v| v.as_str()).unwrap_or("");
             let vis_str = if vis == "public" { " pub" } else { "" };
-            println!("  {}:{} — {} {}{} (line {})", path.cyan(), line, kind, name, vis_str, line);
+            let signature = sym.get("signature").and_then(|v| v.as_str()).unwrap_or("");
+            let is_test = sym.get("is_test").and_then(|v| v.as_bool()).unwrap_or(false);
+            let test_str = if is_test { " [test]" } else { "" };
+            let usage = sym.get("usage_count").and_then(|v| v.as_u64()).unwrap_or(0);
+            let usage_str = if usage > 0 { format!(" ({} calls)", usage) } else { String::new() };
+            if signature.is_empty() {
+                println!("  {}:{} — {} {}{}{} (line {}){}", path.cyan(), line, kind, name, vis_str, test_str, line, usage_str);
+            } else {
+                println!("  {}:{} — {} {}{}{} (line {}){}\n    signature: {}", path.cyan(), line, kind, name, vis_str, test_str, line, usage_str, signature.dimmed());
+            }
         }
         println!("\n  Total: {} symbols", filtered.len());
     }
