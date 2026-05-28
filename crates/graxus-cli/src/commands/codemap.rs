@@ -140,6 +140,62 @@ pub fn run_imports(file: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn run_calls(symbol: &str) -> Result<()> {
+    let cwd = env::current_dir()?;
+    let root = workspace::find_root(Path::new(&cwd))
+        .context("Not a graxus project. Run `graxus init` first.")?;
+
+    let codemap_path = workspace::code_dir(&root).join("codemap.json");
+    if !codemap_path.exists() {
+        println!("{}", "Codemap not found. Run `graxus index` first.".yellow());
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(&codemap_path)?;
+    let codemap: serde_json::Value = serde_json::from_str(&content)?;
+
+    // Find calls where symbol is the caller
+    println!("{}", format!("=== Calls from {} ===", symbol).green().bold());
+    if let Some(calls) = codemap.get("calls").and_then(|f| f.as_array()) {
+        let callers: Vec<_> = calls.iter()
+            .filter(|c| c.get("caller_symbol").and_then(|v| v.as_str()).map(|s| s.contains(symbol)).unwrap_or(false))
+            .collect();
+        if callers.is_empty() {
+            println!("  No outgoing calls found.");
+        } else {
+            for call in &callers {
+                let callee = call.get("callee_text").and_then(|v| v.as_str()).unwrap_or("?");
+                let file = call.get("file").and_then(|v| v.as_str()).unwrap_or("?");
+                let line = call.get("line").and_then(|v| v.as_u64()).unwrap_or(0);
+                let kind = call.get("kind").and_then(|v| v.as_str()).unwrap_or("?");
+                println!("  {}:{} — {} {} (line {})", file.cyan(), line, kind, callee, line);
+            }
+            println!("\n  Total: {} outgoing calls", callers.len());
+        }
+    }
+
+    // Find calls where symbol is the callee
+    println!("\n{}", format!("=== Calls to {} ===", symbol).green().bold());
+    if let Some(calls) = codemap.get("calls").and_then(|f| f.as_array()) {
+        let callees: Vec<_> = calls.iter()
+            .filter(|c| c.get("callee_text").and_then(|v| v.as_str()).map(|s| s == symbol).unwrap_or(false))
+            .collect();
+        if callees.is_empty() {
+            println!("  No incoming calls found.");
+        } else {
+            for call in &callees {
+                let caller = call.get("caller_symbol").and_then(|v| v.as_str()).unwrap_or("(unknown)");
+                let file = call.get("file").and_then(|v| v.as_str()).unwrap_or("?");
+                let line = call.get("line").and_then(|v| v.as_u64()).unwrap_or(0);
+                println!("  {}:{} — called by {} (line {})", file.cyan(), line, caller, line);
+            }
+            println!("\n  Total: {} incoming calls", callees.len());
+        }
+    }
+
+    Ok(())
+}
+
 pub fn run_impacted(file: &str) -> Result<()> {
     let cwd = env::current_dir()?;
     let root = workspace::find_root(Path::new(&cwd))

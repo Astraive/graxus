@@ -317,10 +317,7 @@ fn main() {
                 commands::codemap::run_symbols(file.as_deref())
             }
             CodemapCmd::Imports { file, json: _ } => commands::codemap::run_imports(&file),
-            CodemapCmd::Calls { symbol, json: _ } => {
-                println!("Call graph for: {}", symbol);
-                Ok(())
-            }
+            CodemapCmd::Calls { symbol, json: _ } => commands::codemap::run_calls(&symbol),
             CodemapCmd::Impacted { file } => commands::codemap::run_impacted(&file),
         },
         Commands::Find { query, docs, code, symbol } => {
