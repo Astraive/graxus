@@ -607,6 +607,7 @@ dependencies = [
  "graxus-index",
  "graxus-llm",
  "graxus-server",
+ "graxus-viz",
  "notify",
  "regex",
  "serde",
@@ -747,6 +748,20 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "graxus-viz"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "graxus-agent-api",
+ "graxus-codemap",
+ "graxus-core",
+ "graxus-docgraph",
+ "serde",
+ "serde_json",
  "tracing",
 ]
 
