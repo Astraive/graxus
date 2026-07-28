@@ -2,6 +2,8 @@
 name = "graxus-server"
 version.workspace = true
 edition = "2021"
+license.workspace = true
+publish.workspace = true
 
 [dependencies]
 graxus-core = { path = "../graxus-core" }

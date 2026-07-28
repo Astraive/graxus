@@ -18,6 +18,7 @@ members = [
 version = "0.4.0"
 edition = "2021"
 license = "MIT"
+publish = false
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -48,7 +49,6 @@ tree-sitter-swift = "0.7"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 colored = "3"
-tabled = "0.19"
 globset = "0.4"
 notify = "6"
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -56,6 +56,6 @@ ctrlc = "3"
 tempfile = "3"
 semver = "1"
 subtle = "2"
-indicatif = "0.17"
+indicatif = "0.18.6"
 clap_complete = "4"
 ripex = { path = "../ripex", default-features = false, features = ["serde", "lang-all"] }
