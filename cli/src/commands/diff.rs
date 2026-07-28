@@ -84,10 +84,7 @@ pub fn run(ctx: &CliContext, json: bool) -> Result<()> {
                 println!();
             }
 
-            println!(
-                "  Run {} to apply changes.",
-                "graxus update".cyan().bold()
-            );
+            println!("  Run {} to apply changes.", "graxus update".cyan().bold());
         }
     }
 

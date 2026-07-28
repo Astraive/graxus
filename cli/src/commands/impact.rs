@@ -117,10 +117,8 @@ pub fn run(
                     visited_files.insert(caller_file.clone());
                     if let Some(symbols) = codemap.get("symbols").and_then(|s| s.as_array()) {
                         for sym in symbols {
-                            let sym_file =
-                                sym.get("file").and_then(|v| v.as_str()).unwrap_or("");
-                            let sym_name =
-                                sym.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                            let sym_file = sym.get("file").and_then(|v| v.as_str()).unwrap_or("");
+                            let sym_name = sym.get("name").and_then(|v| v.as_str()).unwrap_or("");
                             if sym_file == caller_file && !seen.contains(sym_name) {
                                 seen.insert(sym_name.to_string());
                                 visited_symbols.insert(sym_name.to_string());
@@ -159,10 +157,8 @@ pub fn run(
             // Also resolve callee names back to the files that define them.
             if let Some(symbols) = codemap.get("symbols").and_then(|s| s.as_array()) {
                 for sym in symbols {
-                    let sym_name =
-                        sym.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                    let sym_file =
-                        sym.get("file").and_then(|v| v.as_str()).unwrap_or("");
+                    let sym_name = sym.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                    let sym_file = sym.get("file").and_then(|v| v.as_str()).unwrap_or("");
                     if sym_name == symbol {
                         visited_files.insert(sym_file.to_string());
                     }
@@ -209,7 +205,10 @@ pub fn run(
                 .bold()
         );
         println!("  Depth: {}", depth);
-        println!("  Direction: {}", if dir.is_empty() { "callers" } else { &dir });
+        println!(
+            "  Direction: {}",
+            if dir.is_empty() { "callers" } else { &dir }
+        );
         println!(
             "  Symbols defined: {}",
             target_symbols
@@ -220,7 +219,11 @@ pub fn run(
         );
         println!();
         let file_label = if files_truncated {
-            format!("Impacted files ({} shown, capped at --max-files={}):", impacted_files.len(), max_files)
+            format!(
+                "Impacted files ({} shown, capped at --max-files={}):",
+                impacted_files.len(),
+                max_files
+            )
         } else {
             format!("Impacted files ({}):", impacted_files.len())
         };
@@ -230,7 +233,11 @@ pub fn run(
         }
         println!();
         let sym_label = if symbols_truncated {
-            format!("Impacted symbols ({} shown, capped at --max-symbols={}):", impacted_symbols.len(), max_symbols)
+            format!(
+                "Impacted symbols ({} shown, capped at --max-symbols={}):",
+                impacted_symbols.len(),
+                max_symbols
+            )
         } else {
             format!("Impacted symbols ({}):", impacted_symbols.len())
         };

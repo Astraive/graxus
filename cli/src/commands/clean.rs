@@ -12,7 +12,10 @@ pub fn run(ctx: &CliContext, force: bool) -> Result<()> {
 
     let graxus_dir = root.join(".graxus");
     if !graxus_dir.exists() {
-        println!("{}", "No .graxus/ directory found. Nothing to clean.".yellow());
+        println!(
+            "{}",
+            "No .graxus/ directory found. Nothing to clean.".yellow()
+        );
         return Ok(());
     }
 
@@ -49,10 +52,7 @@ pub fn run(ctx: &CliContext, force: bool) -> Result<()> {
     std::fs::remove_dir_all(&graxus_dir)
         .with_context(|| format!("Failed to remove {}", graxus_dir.display()))?;
 
-    println!(
-        "\n  {} Cleaned successfully.",
-        "Done.".green().bold()
-    );
+    println!("\n  {} Cleaned successfully.", "Done.".green().bold());
     println!("  Run `graxus index` to rebuild.");
 
     Ok(())

@@ -199,7 +199,9 @@ fn test_end_to_end_multilang_ripex_pipeline() {
     // 4. Codemap show check
     let codemap_out = run(&["--root", root_str, "codemap", "show"]);
     assert!(
-        codemap_out.contains("Symbols:") || codemap_out.contains("Files:") || codemap_out.contains("Codemap"),
+        codemap_out.contains("Symbols:")
+            || codemap_out.contains("Files:")
+            || codemap_out.contains("Codemap"),
         "codemap output:\n{}",
         codemap_out
     );

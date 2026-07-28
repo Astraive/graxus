@@ -64,7 +64,7 @@ pub fn resolve_calls(calls: &mut [CallFact], symbols: &[SymbolFact], imports: &[
         }
 
         // 4. For method calls (obj.method()), try to resolve the object's type
-            if let Some(ref object) = call.object {
+        if let Some(ref object) = call.object {
             // Check if object is imported
             if let Some(imp) = imports_by_local.get(object.as_str()) {
                 if let Some(ref resolved_file) = imp.resolved_file {

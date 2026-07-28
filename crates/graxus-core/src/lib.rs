@@ -6,10 +6,10 @@ pub mod config;
 pub mod dependencies;
 /// File type and language detection from extensions.
 pub mod file_types;
-/// Plugin system for extending graxus functionality.
-pub mod plugins;
 /// Cross-platform path utilities.
 pub mod paths;
+/// Plugin system for extending graxus functionality.
+pub mod plugins;
 /// File scanning, hashing, and diff computation.
 pub mod scanner;
 /// Workspace detection (Cargo, npm, Go).

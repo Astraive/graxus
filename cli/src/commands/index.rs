@@ -179,6 +179,9 @@ pub fn run(
                     println!("  Symbols:  {}", graph.symbols.len());
                     println!("  Imports:  {}", graph.imports.len());
                     println!("  Calls:    {}", graph.calls.len());
+                    println!("  Routes:   {}", graph.routes.len());
+                    println!("  Type impls: {}", graph.type_impls.len());
+                    println!("  DI bindings: {}", graph.di_bindings.len());
                 }
                 // Save codemap
                 let output_dir = root.join(".graxus").join("code");
@@ -221,6 +224,18 @@ pub fn run(
                             .and_then(|v| v.as_array())
                             .map(|a| a.len())
                             .unwrap_or(0);
+                        let route_count = codemap
+                            .get("routes")
+                            .and_then(|v| v.as_array())
+                            .map_or(0, Vec::len);
+                        let type_impl_count = codemap
+                            .get("type_impls")
+                            .and_then(|v| v.as_array())
+                            .map_or(0, Vec::len);
+                        let di_binding_count = codemap
+                            .get("di_bindings")
+                            .and_then(|v| v.as_array())
+                            .map_or(0, Vec::len);
                         let parser_count = codemap
                             .get("parser_results")
                             .and_then(|v| v.as_array())
@@ -236,7 +251,13 @@ pub fn run(
                                     .sum::<usize>()
                             })
                             .unwrap_or(0);
-                        let total = sym_count + imp_count + call_count + parser_count;
+                        let total = sym_count
+                            + imp_count
+                            + call_count
+                            + route_count
+                            + type_impl_count
+                            + di_binding_count
+                            + parser_count;
 
                         let pb = if ctx.show_progress() {
                             let pb = ProgressBar::new(total as u64);
@@ -326,6 +347,97 @@ pub fn run(
                                 }
                                 if let Some(d) = &deadline {
                                     d.check()?;
+                                }
+                            }
+                        }
+                        // Insert framework route facts.
+                        if let Some(routes) = codemap.get("routes").and_then(|v| v.as_array()) {
+                            for route in routes {
+                                let middleware: Vec<String> = route
+                                    .get("middleware")
+                                    .cloned()
+                                    .and_then(|value| serde_json::from_value(value).ok())
+                                    .unwrap_or_default();
+                                let _ = db.insert_route(
+                                    route.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                                    route.get("file").and_then(|v| v.as_str()).unwrap_or(""),
+                                    route.get("language").and_then(|v| v.as_str()).unwrap_or(""),
+                                    route.get("method").and_then(|v| v.as_str()).unwrap_or("*"),
+                                    route.get("path").and_then(|v| v.as_str()).unwrap_or(""),
+                                    route.get("handler").and_then(|v| v.as_str()).unwrap_or(""),
+                                    route.get("handler_file").and_then(|v| v.as_str()),
+                                    route.get("line").and_then(|v| v.as_u64()).unwrap_or(0)
+                                        as usize,
+                                    route
+                                        .get("framework")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or(""),
+                                    &middleware,
+                                );
+                                if let Some(pb) = &pb {
+                                    pb.inc(1);
+                                }
+                            }
+                        }
+                        // Insert type relationship facts.
+                        if let Some(type_impls) =
+                            codemap.get("type_impls").and_then(|v| v.as_array())
+                        {
+                            for type_impl in type_impls {
+                                let _ = db.insert_type_impl(
+                                    type_impl.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                                    type_impl.get("file").and_then(|v| v.as_str()).unwrap_or(""),
+                                    type_impl
+                                        .get("language")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or(""),
+                                    type_impl
+                                        .get("implementing_type")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or(""),
+                                    type_impl
+                                        .get("trait_or_interface")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or(""),
+                                    type_impl.get("line").and_then(|v| v.as_u64()).unwrap_or(0)
+                                        as usize,
+                                    type_impl.get("kind").and_then(|v| v.as_str()).unwrap_or(""),
+                                );
+                                if let Some(pb) = &pb {
+                                    pb.inc(1);
+                                }
+                            }
+                        }
+                        // Insert dependency-injection binding facts.
+                        if let Some(bindings) =
+                            codemap.get("di_bindings").and_then(|v| v.as_array())
+                        {
+                            for binding in bindings {
+                                let _ = db.insert_di_binding(
+                                    binding.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                                    binding.get("file").and_then(|v| v.as_str()).unwrap_or(""),
+                                    binding
+                                        .get("language")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or(""),
+                                    binding
+                                        .get("abstract_type")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or(""),
+                                    binding
+                                        .get("concrete_type")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or(""),
+                                    binding.get("lifetime").and_then(|v| v.as_str()),
+                                    binding.get("line").and_then(|v| v.as_u64()).unwrap_or(0)
+                                        as usize,
+                                    binding
+                                        .get("framework")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or(""),
+                                );
+                                if let Some(pb) = &pb {
+                                    pb.inc(1);
                                 }
                             }
                         }

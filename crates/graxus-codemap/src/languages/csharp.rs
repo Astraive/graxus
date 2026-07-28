@@ -204,8 +204,11 @@ impl LanguageIndexer for CSharpIndexer {
         // Interfaces
         {
             let mut cursor = QueryCursor::new();
-            let mut matches =
-                cursor.matches(&self.sym_interface_query, tree.root_node(), source.as_bytes());
+            let mut matches = cursor.matches(
+                &self.sym_interface_query,
+                tree.root_node(),
+                source.as_bytes(),
+            );
             while let Some(m) = matches.next() {
                 let mut name = String::new();
                 let mut start = 0usize;
@@ -375,8 +378,11 @@ impl LanguageIndexer for CSharpIndexer {
         // Namespaces
         {
             let mut cursor = QueryCursor::new();
-            let mut matches =
-                cursor.matches(&self.sym_namespace_query, tree.root_node(), source.as_bytes());
+            let mut matches = cursor.matches(
+                &self.sym_namespace_query,
+                tree.root_node(),
+                source.as_bytes(),
+            );
             while let Some(m) = matches.next() {
                 let mut name = String::new();
                 let mut start = 0usize;
@@ -606,7 +612,10 @@ mod tests {
         let tree = parse_csharp(source);
         let indexer = CSharpIndexer::new();
         let symbols = indexer.extract_symbols(&tree, source, "test.cs");
-        let classes: Vec<_> = symbols.iter().filter(|s| s.kind == SymbolKind::Class).collect();
+        let classes: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Class)
+            .collect();
         assert!(!classes.is_empty());
         assert_eq!(classes[0].name, "MyClass");
     }

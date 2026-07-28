@@ -664,7 +664,9 @@ impl LspServer {
         let character = params.position.character as usize;
 
         // Get the current line text to determine the prefix for filtering
-        let prefix = self.get_line_content(&file_path, line, character).unwrap_or_default();
+        let prefix = self
+            .get_line_content(&file_path, line, character)
+            .unwrap_or_default();
 
         // Collect all unique symbol names as completion items, filtered by prefix
         let mut seen = std::collections::HashSet::new();
@@ -729,10 +731,9 @@ fn url_decode(input: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(byte) = u8::from_str_radix(
-                std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""),
-                16,
-            ) {
+            if let Ok(byte) =
+                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+            {
                 result.push(byte);
                 i += 3;
                 continue;

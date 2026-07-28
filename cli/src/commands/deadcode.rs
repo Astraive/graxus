@@ -85,9 +85,7 @@ pub fn run(
                     if let Ok(text) = std::fs::read_to_string(path_str) {
                         for (idx, line) in text.lines().enumerate() {
                             let lineno = idx + 1;
-                            for tok in
-                                line.split(|c: char| !c.is_alphanumeric() && c != '_')
-                            {
+                            for tok in line.split(|c: char| !c.is_alphanumeric() && c != '_') {
                                 if !tok.is_empty() {
                                     referenced
                                         .entry(tok.to_string())
@@ -111,10 +109,7 @@ pub fn run(
     ) -> bool {
         referenced
             .get(name)
-            .is_some_and(|locs| {
-                locs.iter()
-                    .any(|(f, l)| f != sym_file || *l != sym_line)
-            })
+            .is_some_and(|locs| locs.iter().any(|(f, l)| f != sym_file || *l != sym_line))
     }
 
     // Find symbols with zero calls. Each candidate carries a confidence score:
@@ -140,10 +135,7 @@ pub fn run(
 
             // Test exclusion: explicit flag, or heuristic test names/files.
             if exclude_tests {
-                if is_test_sym
-                    || name.starts_with("test_")
-                    || name.starts_with("Test")
-                {
+                if is_test_sym || name.starts_with("test_") || name.starts_with("Test") {
                     continue;
                 }
                 if sym_file.contains("/test")
@@ -235,7 +227,11 @@ pub fn run(
                 );
             }
         }
-        println!("\n  Showing {} of {} potentially unused symbols", dead.len(), total_before_limit);
+        println!(
+            "\n  Showing {} of {} potentially unused symbols",
+            dead.len(),
+            total_before_limit
+        );
         println!(
             "  {} Note: This is a heuristic. Some symbols may be used via reflection, macros, or dynamic dispatch.",
             "⚠".yellow()

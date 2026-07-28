@@ -157,10 +157,8 @@ pub fn run(
         let snapshot = if config.edit.create_snapshots {
             // Collect absolute paths of files that will be modified, so the
             // snapshot captures their pre-edit state.
-            let targets: Vec<std::path::PathBuf> = changes
-                .iter()
-                .map(|(rel, _)| root.join(rel))
-                .collect();
+            let targets: Vec<std::path::PathBuf> =
+                changes.iter().map(|(rel, _)| root.join(rel)).collect();
 
             let store = IndexStore::new(root.join(".graxus"));
             match store.create_snapshot("replace", &targets) {
@@ -173,7 +171,10 @@ pub fn run(
                 }
                 Err(e) => {
                     // Snapshot failure is a safety red flag — refuse to mutate.
-                    anyhow::bail!("Failed to create pre-edit snapshot: {}. No files were modified.", e);
+                    anyhow::bail!(
+                        "Failed to create pre-edit snapshot: {}. No files were modified.",
+                        e
+                    );
                 }
             }
         } else {

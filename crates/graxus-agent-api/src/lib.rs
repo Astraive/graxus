@@ -7,7 +7,8 @@ pub mod export;
 
 pub use bridge::{BridgeBuilder, BridgeEdge, BridgeEdgeType};
 pub use context::{
-    estimate_tokens, ContextBudget, ContextEngine, ContextQueryType, Priority, ScoredItem,
+    estimate_tokens, AgentContext, ContextBudget, ContextEngine, ContextQuery, ContextQueryType,
+    Priority, ScoredItem,
 };
 pub use diff_context::{build_diff_context, parse_diff_paths, DiffContext};
-pub use export::AgentExport;
+pub use export::{AgentExport, ExportStats};

@@ -771,11 +771,22 @@ fn dispatch(command: Commands, ctx: &CliContext) -> anyhow::Result<()> {
             lang,
             max_files,
             codemap_backend,
-        } => commands::index::run(ctx, docs_only, code_only, include, exclude, lang, max_files, codemap_backend),
+        } => commands::index::run(
+            ctx,
+            docs_only,
+            code_only,
+            include,
+            exclude,
+            lang,
+            max_files,
+            codemap_backend,
+        ),
         Commands::Status { json } => commands::status::run(ctx, json),
-        Commands::Update { full, dry_run, codemap_backend } => {
-            commands::update::run(ctx, dry_run, full, codemap_backend)
-        }
+        Commands::Update {
+            full,
+            dry_run,
+            codemap_backend,
+        } => commands::update::run(ctx, dry_run, full, codemap_backend),
         Commands::Diff { json } => commands::diff::run(ctx, json),
         Commands::Graph { sub } => match sub {
             GraphCmd::Docs {
@@ -806,16 +817,19 @@ fn dispatch(command: Commands, ctx: &CliContext) -> anyhow::Result<()> {
                 min_confidence,
                 limit,
                 json,
-            } => commands::codemap::run_symbols(ctx, &commands::codemap::SymbolFilter {
-                file,
-                kind,
-                lang,
-                exported,
-                include_tests,
-                _min_confidence: min_confidence,
-                limit,
-                json,
-            }),
+            } => commands::codemap::run_symbols(
+                ctx,
+                &commands::codemap::SymbolFilter {
+                    file,
+                    kind,
+                    lang,
+                    exported,
+                    include_tests,
+                    _min_confidence: min_confidence,
+                    limit,
+                    json,
+                },
+            ),
             CodemapCmd::Imports {
                 file,
                 resolved,
@@ -916,7 +930,15 @@ fn dispatch(command: Commands, ctx: &CliContext) -> anyhow::Result<()> {
             max_symbols,
             max_files,
             json,
-        } => commands::impact::run(ctx, &target, depth, &direction, max_symbols, max_files, json),
+        } => commands::impact::run(
+            ctx,
+            &target,
+            depth,
+            &direction,
+            max_symbols,
+            max_files,
+            json,
+        ),
         Commands::Hotspots {
             limit,
             min_usage,
@@ -929,7 +951,14 @@ fn dispatch(command: Commands, ctx: &CliContext) -> anyhow::Result<()> {
             include_exported,
             exclude_tests,
             json,
-        } => commands::deadcode::run(ctx, min_confidence, limit, include_exported, exclude_tests, json),
+        } => commands::deadcode::run(
+            ctx,
+            min_confidence,
+            limit,
+            include_exported,
+            exclude_tests,
+            json,
+        ),
         Commands::History { file, limit, json } => {
             commands::history::run(ctx, file.as_deref(), limit, json)
         }
@@ -969,7 +998,9 @@ fn dispatch(command: Commands, ctx: &CliContext) -> anyhow::Result<()> {
                 dry_run,
                 force,
             } => commands::generate::run_docs(ctx, file.as_deref(), dry_run, force),
-            GenerateCmd::Architecture { dry_run } => commands::generate::run_architecture(ctx, dry_run),
+            GenerateCmd::Architecture { dry_run } => {
+                commands::generate::run_architecture(ctx, dry_run)
+            }
         },
         Commands::Serve => commands::serve::run(ctx),
         Commands::Lsp => commands::serve::run_lsp(ctx),
@@ -983,14 +1014,18 @@ fn dispatch(command: Commands, ctx: &CliContext) -> anyhow::Result<()> {
         } => commands::regex_search::run(ctx, &pattern, docs, code, max_results, context_lines),
         Commands::Visualize { sub } => match sub {
             VisualizeCmd::Docs { output } => commands::visualize::run_docs(ctx, output.as_deref()),
-            VisualizeCmd::Codemap { output } => commands::visualize::run_codemap(ctx, output.as_deref()),
+            VisualizeCmd::Codemap { output } => {
+                commands::visualize::run_codemap(ctx, output.as_deref())
+            }
             VisualizeCmd::Callgraph { output } => {
                 commands::visualize::run_callgraph(ctx, output.as_deref())
             }
             VisualizeCmd::Impact { target, output } => {
                 commands::visualize::run_impact(ctx, &target, output.as_deref())
             }
-            VisualizeCmd::Bridge { output } => commands::visualize::run_bridge(ctx, output.as_deref()),
+            VisualizeCmd::Bridge { output } => {
+                commands::visualize::run_bridge(ctx, output.as_deref())
+            }
             VisualizeCmd::Deps { output } => commands::visualize::run_deps(ctx, output.as_deref()),
             VisualizeCmd::All { output } => commands::visualize::run_all(ctx, output.as_deref()),
         },

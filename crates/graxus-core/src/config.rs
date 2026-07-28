@@ -47,7 +47,9 @@ impl FromStr for ParserBackend {
             "ripex" | "rip" => Ok(ParserBackend::Ripex),
             "tree-sitter" | "treesitter" | "tree_sitter" | "ts" => Ok(ParserBackend::TreeSitter),
             "auto" => Ok(ParserBackend::Auto),
-            other => anyhow::bail!("unknown parser backend: {other} (expected ripex|tree-sitter|auto)"),
+            other => {
+                anyhow::bail!("unknown parser backend: {other} (expected ripex|tree-sitter|auto)")
+            }
         }
     }
 }
@@ -817,7 +819,10 @@ impl GraxusConfig {
     /// Precedence: explicit `override_backend` (CLI) > configured string >
     /// `GRAXUS_CODEMAP_PARSER_BACKEND` (already folded into `codemap.parser_backend`
     /// by `apply_env_overrides`) > built-in default (`ParserBackend::Ripex`).
-    pub fn effective_codemap_backend(&self, override_backend: Option<ParserBackend>) -> ParserBackend {
+    pub fn effective_codemap_backend(
+        &self,
+        override_backend: Option<ParserBackend>,
+    ) -> ParserBackend {
         if let Some(b) = override_backend {
             return b;
         }

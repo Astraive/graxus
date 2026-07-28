@@ -133,20 +133,14 @@ pub fn run_symbols(ctx: &CliContext, filter: &SymbolFilter) -> Result<()> {
                 }
                 // Exported filter
                 if filter.exported {
-                    let is_exported = s
-                        .get("exported")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
+                    let is_exported = s.get("exported").and_then(|v| v.as_bool()).unwrap_or(false);
                     if !is_exported {
                         return false;
                     }
                 }
                 // Test filter
                 if !filter.include_tests {
-                    let is_test = s
-                        .get("is_test")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
+                    let is_test = s.get("is_test").and_then(|v| v.as_bool()).unwrap_or(false);
                     if is_test {
                         return false;
                     }
@@ -250,7 +244,8 @@ pub fn run_imports(
             .iter()
             .filter(|i| {
                 // File filter
-                if !i.get("file")
+                if !i
+                    .get("file")
                     .and_then(|v| v.as_str())
                     .map(|p| p.contains(file))
                     .unwrap_or(false)
@@ -291,10 +286,7 @@ pub fn run_imports(
                     .and_then(|v| v.as_str())
                     .unwrap_or("?");
                 let kind = imp.get("kind").and_then(|v| v.as_str()).unwrap_or("?");
-                let conf = imp
-                    .get("confidence")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let conf = imp.get("confidence").and_then(|v| v.as_str()).unwrap_or("");
                 let conf_str = if conf.is_empty() {
                     String::new()
                 } else {
@@ -553,7 +545,10 @@ fn codemap_to_csv(codemap: &serde_json::Value) -> Result<String> {
             let line_start = sym.get("line_start").and_then(|v| v.as_u64()).unwrap_or(0);
             let line_end = sym.get("line_end").and_then(|v| v.as_u64()).unwrap_or(0);
             let language = sym.get("language").and_then(|v| v.as_str()).unwrap_or("");
-            let exported = sym.get("exported").and_then(|v| v.as_bool()).unwrap_or(false);
+            let exported = sym
+                .get("exported")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             csv.push_str(&format!(
                 "symbol,{},{},{},{},{},{},{}\n",
                 name, kind, file, line_start, line_end, language, exported
@@ -569,19 +564,31 @@ fn codemap_to_csv(codemap: &serde_json::Value) -> Result<String> {
             let file = imp.get("file").and_then(|v| v.as_str()).unwrap_or("");
             let line = imp.get("line").and_then(|v| v.as_u64()).unwrap_or(0);
             let kind = imp.get("kind").and_then(|v| v.as_str()).unwrap_or("");
-            csv.push_str(&format!("import,{},{},{},{},{}\n", source, local, file, line, kind));
+            csv.push_str(&format!(
+                "import,{},{},{},{},{}\n",
+                source, local, file, line, kind
+            ));
         }
     }
     // Calls
     csv.push_str("\ntype,caller,callee,file,line,kind\n");
     if let Some(calls) = codemap.get("calls").and_then(|v| v.as_array()) {
         for call in calls {
-            let caller = call.get("caller_symbol").and_then(|v| v.as_str()).unwrap_or("");
-            let callee = call.get("callee_text").and_then(|v| v.as_str()).unwrap_or("");
+            let caller = call
+                .get("caller_symbol")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let callee = call
+                .get("callee_text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let file = call.get("file").and_then(|v| v.as_str()).unwrap_or("");
             let line = call.get("line").and_then(|v| v.as_u64()).unwrap_or(0);
             let kind = call.get("kind").and_then(|v| v.as_str()).unwrap_or("");
-            csv.push_str(&format!("call,{},{},{},{},{}\n", caller, callee, file, line, kind));
+            csv.push_str(&format!(
+                "call,{},{},{},{},{}\n",
+                caller, callee, file, line, kind
+            ));
         }
     }
     Ok(csv)
@@ -619,7 +626,10 @@ fn codemap_to_markdown(codemap: &serde_json::Value) -> Result<String> {
         md.push_str(&format!("## Imports ({} total)\n\n", imports.len()));
         for imp in imports {
             let source = imp.get("source").and_then(|v| v.as_str()).unwrap_or("?");
-            let local = imp.get("local_name").and_then(|v| v.as_str()).unwrap_or("?");
+            let local = imp
+                .get("local_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
             let file = imp.get("file").and_then(|v| v.as_str()).unwrap_or("?");
             md.push_str(&format!("- `{}` as `{}` in `{}`\n", source, local, file));
         }
@@ -629,8 +639,14 @@ fn codemap_to_markdown(codemap: &serde_json::Value) -> Result<String> {
     if let Some(calls) = codemap.get("calls").and_then(|v| v.as_array()) {
         md.push_str(&format!("## Calls ({} total)\n\n", calls.len()));
         for call in calls {
-            let caller = call.get("caller_symbol").and_then(|v| v.as_str()).unwrap_or("?");
-            let callee = call.get("callee_text").and_then(|v| v.as_str()).unwrap_or("?");
+            let caller = call
+                .get("caller_symbol")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+            let callee = call
+                .get("callee_text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
             let file = call.get("file").and_then(|v| v.as_str()).unwrap_or("?");
             md.push_str(&format!("- `{}` → `{}` in `{}`\n", caller, callee, file));
         }

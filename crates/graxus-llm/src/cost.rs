@@ -84,9 +84,7 @@ impl CostTracker {
             "gpt-4-turbo" => (10.00, 30.00),
             "gpt-3.5-turbo" => (0.50, 1.50),
             // Anthropic models
-            "claude-3-5-sonnet" | "claude-3.5-sonnet" | "claude-sonnet-4-20250514" => {
-                (3.00, 15.00)
-            }
+            "claude-3-5-sonnet" | "claude-3.5-sonnet" | "claude-sonnet-4-20250514" => (3.00, 15.00),
             "claude-3-opus" | "claude-3-opus-20240229" => (15.00, 75.00),
             "claude-3-haiku" | "claude-3-haiku-20240307" => (0.25, 1.25),
             // Fallback

@@ -11,7 +11,9 @@ fn load_codemap(ctx: &CliContext) -> Result<Value> {
     if !codemap_path.exists() {
         anyhow::bail!("Codemap not found. Run `graxus index` first.");
     }
-    Ok(serde_json::from_str(&std::fs::read_to_string(codemap_path)?)?)
+    Ok(serde_json::from_str(&std::fs::read_to_string(
+        codemap_path,
+    )?)?)
 }
 
 pub fn run(

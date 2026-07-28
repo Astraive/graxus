@@ -19,11 +19,11 @@
 use anyhow::{anyhow, Context, Result};
 use graxus_core::ScannedFile;
 
+use crate::facts::{ImplKind, TypeImplFact};
 use crate::{
     CallFact, ConfidenceScore, ImportFact, ParserDiagnostic, ParserFact, ParserFactKind,
     ResolutionMethod, SymbolFact, VariableFact,
 };
-use crate::facts::{ImplKind, TypeImplFact};
 
 /// Ripex output converted for the Graxus graph without discarding native data.
 pub struct RipexExtraction {
@@ -161,9 +161,8 @@ pub fn try_extract(
     calls.sort_by(|a, b| a.0.line.cmp(&b.0.line).then(a.0.column.cmp(&b.0.column)));
     variables.sort_by(|a, b| a.0.line_def.cmp(&b.0.line_def));
 
-    let mut parser_facts = Vec::with_capacity(
-        symbols.len() + imports.len() + calls.len() + variables.len(),
-    );
+    let mut parser_facts =
+        Vec::with_capacity(symbols.len() + imports.len() + calls.len() + variables.len());
     let mut type_impls = Vec::new();
     let symbols = symbols
         .into_iter()
@@ -229,11 +228,7 @@ pub fn try_extract(
     })
 }
 
-fn convert_type_impls(
-    symbol: &ripex::ParsedSymbol,
-    rel: &str,
-    lang: &str,
-) -> Vec<TypeImplFact> {
+fn convert_type_impls(symbol: &ripex::ParsedSymbol, rel: &str, lang: &str) -> Vec<TypeImplFact> {
     let kind = match lang {
         "cpp" => ImplKind::CppInheritance,
         "csharp" => ImplKind::CSharpInheritance,
@@ -394,9 +389,17 @@ mod tests {
     #[test]
     fn rust_symbols_extract() {
         let f = sample(Language::Rust, "a.rs");
-        let extraction =
-            try_extract("rust", "rs", "pub fn main() {}\nstruct Foo { x: i32 }\n", &f).unwrap();
-        assert!(!extraction.symbols.is_empty(), "expected at least one symbol");
+        let extraction = try_extract(
+            "rust",
+            "rs",
+            "pub fn main() {}\nstruct Foo { x: i32 }\n",
+            &f,
+        )
+        .unwrap();
+        assert!(
+            !extraction.symbols.is_empty(),
+            "expected at least one symbol"
+        );
         assert_eq!(extraction.symbols[0].language, "rust");
         assert!(
             !extraction.symbols[0].id.is_empty(),

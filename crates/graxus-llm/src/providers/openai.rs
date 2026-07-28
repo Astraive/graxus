@@ -88,9 +88,7 @@ impl LlmProvider for OpenAiProvider {
             );
         }
 
-        let resp = resp
-            .error_for_status()
-            .context("OpenAI returned error")?;
+        let resp = resp.error_for_status().context("OpenAI returned error")?;
 
         let v: serde_json::Value = resp
             .json()

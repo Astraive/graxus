@@ -49,10 +49,7 @@ pub fn run_set_key(ctx: &CliContext, provider: &str, key: &str) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(
-            &secrets_path,
-            std::fs::Permissions::from_mode(0o600),
-        );
+        let _ = std::fs::set_permissions(&secrets_path, std::fs::Permissions::from_mode(0o600));
     }
 
     // Update graxus.yaml with api_key_env

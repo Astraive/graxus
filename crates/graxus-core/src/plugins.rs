@@ -283,8 +283,7 @@ impl PluginRegistry {
             );
         }
 
-        let stdout_str =
-            String::from_utf8(stdout).context("Plugin output is not valid UTF-8")?;
+        let stdout_str = String::from_utf8(stdout).context("Plugin output is not valid UTF-8")?;
 
         let result: PluginResult = serde_json::from_str(stdout_str.trim())
             .context("Failed to parse plugin output as PluginResult JSON")?;

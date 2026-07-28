@@ -276,9 +276,8 @@ impl DocGraph {
             .collect();
 
         self.nodes.retain(|n| n.path != path);
-        self.edges.retain(|e| {
-            !ids_to_remove.contains(&e.from) && !ids_to_remove.contains(&e.to)
-        });
+        self.edges
+            .retain(|e| !ids_to_remove.contains(&e.from) && !ids_to_remove.contains(&e.to));
     }
 
     /// Merge another DocGraph into this one.

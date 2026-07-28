@@ -35,23 +35,72 @@ pub trait FrameworkResolver {
     }
 }
 
-macro_rules! framework_resolver {
-    ($type_name:ident, $display_name:literal, $language:literal) => {
-        #[derive(Debug, Default, Clone, Copy)]
-        pub struct $type_name;
-
-        impl FrameworkResolver for $type_name {
-            fn descriptor(&self) -> $crate::frameworks::FrameworkDescriptor {
-                $crate::frameworks::FrameworkDescriptor {
-                    name: $display_name,
-                    language: $language,
-                }
-            }
+/// Extract framework-specific HTTP endpoint registrations for one source file.
+///
+/// Framework parsers deliberately run after the language parser. They add
+/// framework semantics—routes and their handlers—that are not represented by
+/// the language-neutral Ripex fact model.
+pub fn extract_routes(file: &str, source: &str, language: &str) -> Vec<RouteFact> {
+    let mut routes = match language {
+        "python" => {
+            let mut routes = fastapi::resolver().extract_routes(file, source);
+            routes.extend(flask::resolver().extract_routes(file, source));
+            routes.extend(django::resolver().extract_routes(file, source));
+            routes
         }
+        "rust" => {
+            let mut routes = axum::resolver().extract_routes(file, source);
+            routes.extend(actix::resolver().extract_routes(file, source));
+            routes.extend(rocket::resolver().extract_routes(file, source));
+            routes
+        }
+        "go" => {
+            let mut routes = gin::resolver().extract_routes(file, source);
+            routes.extend(fiber::resolver().extract_routes(file, source));
+            routes.extend(echo::resolver().extract_routes(file, source));
+            routes
+        }
+        "javascript" | "typescript" => {
+            let mut routes = express::resolver().extract_routes(file, source);
+            routes.extend(nestjs::resolver().extract_routes(file, source));
+            routes.extend(nextjs::resolver().extract_routes(file, source));
+            routes
+        }
+        "csharp" => aspnet::resolver().extract_routes(file, source),
+        "cpp" => {
+            let mut routes = crow::resolver().extract_routes(file, source);
+            routes.extend(pistache::resolver().extract_routes(file, source));
+            routes.extend(drogon::resolver().extract_routes(file, source));
+            routes
+        }
+        _ => Vec::new(),
     };
-}
 
-pub(crate) use framework_resolver;
+    routes.sort_by(|left, right| {
+        (
+            left.framework.as_str(),
+            left.method.as_str(),
+            left.path.as_str(),
+            left.handler.as_str(),
+            left.line,
+        )
+            .cmp(&(
+                right.framework.as_str(),
+                right.method.as_str(),
+                right.path.as_str(),
+                right.handler.as_str(),
+                right.line,
+            ))
+    });
+    routes.dedup_by(|left, right| {
+        left.framework == right.framework
+            && left.method == right.method
+            && left.path == right.path
+            && left.handler == right.handler
+            && left.line == right.line
+    });
+    routes
+}
 
 pub fn supported_frameworks() -> Vec<FrameworkDescriptor> {
     vec![

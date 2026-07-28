@@ -103,12 +103,14 @@ fn hash_file(path: &Path) -> Result<String> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
 
-    let mut file = fs::File::open(path)
-        .with_context(|| format!("Failed to open {}", path.display()))?;
+    let mut file =
+        fs::File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
     let mut hasher = Sha256::new();
     let mut buf = [0u8; 8192];
     loop {
-        let n = file.read(&mut buf).context("Failed to read file for hashing")?;
+        let n = file
+            .read(&mut buf)
+            .context("Failed to read file for hashing")?;
         if n == 0 {
             break;
         }

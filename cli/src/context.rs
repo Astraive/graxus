@@ -95,9 +95,8 @@ impl CliContext {
         if let Some(config_path) = &self.config {
             let contents = std::fs::read_to_string(config_path)
                 .with_context(|| format!("Failed to read config: {}", config_path.display()))?;
-            let mut config: GraxusConfig = serde_yaml::from_str(&contents).with_context(|| {
-                format!("Failed to parse config: {}", config_path.display())
-            })?;
+            let mut config: GraxusConfig = serde_yaml::from_str(&contents)
+                .with_context(|| format!("Failed to parse config: {}", config_path.display()))?;
             config.apply_env_overrides();
             return Ok(config);
         }

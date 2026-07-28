@@ -11,7 +11,9 @@ fn load_codemap(ctx: &CliContext) -> Result<Value> {
     if !codemap_path.exists() {
         anyhow::bail!("Codemap not found. Run `graxus index` first.");
     }
-    Ok(serde_json::from_str(&std::fs::read_to_string(codemap_path)?)?)
+    Ok(serde_json::from_str(&std::fs::read_to_string(
+        codemap_path,
+    )?)?)
 }
 
 pub fn run(ctx: &CliContext, name: Option<&str>, json: bool) -> Result<()> {
@@ -28,15 +30,20 @@ pub fn run(ctx: &CliContext, name: Option<&str>, json: bool) -> Result<()> {
 
     let matches_name = |entry: &&Value| {
         name.is_none_or(|needle| {
-            ["trait_or_interface", "implementing_type", "abstract_type", "concrete_type"]
-                .iter()
-                .any(|field| {
-                    entry
-                        .get(field)
-                        .and_then(Value::as_str)
-                        .map(|value| value.contains(needle))
-                        .unwrap_or(false)
-                })
+            [
+                "trait_or_interface",
+                "implementing_type",
+                "abstract_type",
+                "concrete_type",
+            ]
+            .iter()
+            .any(|field| {
+                entry
+                    .get(field)
+                    .and_then(Value::as_str)
+                    .map(|value| value.contains(needle))
+                    .unwrap_or(false)
+            })
         })
     };
 

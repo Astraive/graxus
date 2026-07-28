@@ -11,7 +11,13 @@ use crate::context::CliContext;
 /// * `_min_usage` - Minimum usage count to include
 /// * `_exclude_tests` - If true, exclude test symbols
 /// * `json` - Output as JSON
-pub fn run(ctx: &CliContext, limit: usize, _min_usage: usize, _exclude_tests: bool, json: bool) -> Result<()> {
+pub fn run(
+    ctx: &CliContext,
+    limit: usize,
+    _min_usage: usize,
+    _exclude_tests: bool,
+    json: bool,
+) -> Result<()> {
     let root = ctx.resolve_root()?;
 
     let codemap_path = root.join(".graxus").join("code").join("codemap.json");

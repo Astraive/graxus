@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-
 use crate::context::CliContext;
 
 /// Debounce state that collects file change events and triggers after a quiet period.
@@ -190,7 +189,16 @@ pub fn run(ctx: &CliContext, debounce_ms: u64) -> Result<()> {
                 println!("    ... and {} more", file_list.len() - 5);
             }
 
-            match super::index::run(ctx, false, false, Vec::new(), Vec::new(), Vec::new(), None, "ripex".to_string()) {
+            match super::index::run(
+                ctx,
+                false,
+                false,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                None,
+                "ripex".to_string(),
+            ) {
                 Ok(_) => {
                     println!("{} Re-index complete.", "✓".green());
                     consecutive_failures = 0;

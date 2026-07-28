@@ -169,7 +169,9 @@ pub fn run(ctx: &CliContext, dry_run: bool, full: bool, codemap_backend: String)
             .collect();
 
         if !changed_files.is_empty() {
-            let backend = codemap_backend.parse::<graxus_core::ParserBackend>().unwrap_or_default();
+            let backend = codemap_backend
+                .parse::<graxus_core::ParserBackend>()
+                .unwrap_or_default();
             let builder = CodemapBuilder::new(changed_files.clone()).with_backend(backend);
             let new_graph = builder.build()?;
             existing_graph.merge(new_graph);
@@ -363,7 +365,9 @@ fn run_full_index(
             None
         };
 
-        let backend = codemap_backend.parse::<graxus_core::ParserBackend>().unwrap_or_default();
+        let backend = codemap_backend
+            .parse::<graxus_core::ParserBackend>()
+            .unwrap_or_default();
         let builder = CodemapBuilder::new(code_files).with_backend(backend);
         let graph = builder.build()?;
 

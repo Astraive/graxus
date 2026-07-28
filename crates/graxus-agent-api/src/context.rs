@@ -1,5 +1,6 @@
 //! Context query engine — assembles structured context for AI agents.
 
+use graxus_codemap::facts::{DIFact, RouteFact, TypeImplFact};
 use graxus_codemap::{CallFact, CodeGraph, ImportFact, SymbolFact};
 use graxus_docgraph::graph::{DocGraph, DocNode};
 use serde::{Deserialize, Serialize};
@@ -31,6 +32,15 @@ pub struct AgentContext {
     pub code: Vec<SymbolFact>,
     pub imports: Vec<ImportFact>,
     pub calls: Vec<CallFact>,
+    /// HTTP endpoints relevant to the query.
+    #[serde(default)]
+    pub routes: Vec<RouteFact>,
+    /// Trait/interface/inheritance relationships relevant to the query.
+    #[serde(default)]
+    pub type_impls: Vec<TypeImplFact>,
+    /// Dependency-injection bindings relevant to the query.
+    #[serde(default)]
+    pub di_bindings: Vec<DIFact>,
     pub related_files: Vec<String>,
     pub bridge_edges: Vec<BridgeEdge>,
     pub warnings: Vec<String>,
@@ -130,6 +140,9 @@ impl ContextEngine {
             code: Vec::new(),
             imports: Vec::new(),
             calls: Vec::new(),
+            routes: Vec::new(),
+            type_impls: Vec::new(),
+            di_bindings: Vec::new(),
             related_files: Vec::new(),
             bridge_edges: Vec::new(),
             warnings: Vec::new(),
@@ -152,6 +165,66 @@ impl ContextEngine {
         for symbol in &self.code_graph.symbols {
             if symbol.name.to_lowercase().contains(&query_lower) {
                 context.code.push(symbol.clone());
+            }
+        }
+
+        // Search framework and type-system semantics directly. These normalized
+        // graph facts are intentionally used as-is; parser-native facts stay in
+        // CodeGraph parser results and are not duplicated into agent context.
+        for route in &self.code_graph.routes {
+            if route.method.to_lowercase().contains(&query_lower)
+                || route.path.to_lowercase().contains(&query_lower)
+                || route.handler.to_lowercase().contains(&query_lower)
+                || route.file.to_lowercase().contains(&query_lower)
+                || route.framework.to_lowercase().contains(&query_lower)
+                || route.language.to_lowercase().contains(&query_lower)
+                || route
+                    .handler_file
+                    .as_deref()
+                    .is_some_and(|file| file.to_lowercase().contains(&query_lower))
+                || route
+                    .middleware
+                    .iter()
+                    .any(|middleware| middleware.to_lowercase().contains(&query_lower))
+            {
+                context.routes.push(route.clone());
+                context.related_files.push(route.file.clone());
+                if let Some(handler_file) = &route.handler_file {
+                    context.related_files.push(handler_file.clone());
+                }
+            }
+        }
+
+        for type_impl in &self.code_graph.type_impls {
+            if type_impl.file.to_lowercase().contains(&query_lower)
+                || type_impl.language.to_lowercase().contains(&query_lower)
+                || type_impl
+                    .implementing_type
+                    .to_lowercase()
+                    .contains(&query_lower)
+                || type_impl
+                    .trait_or_interface
+                    .to_lowercase()
+                    .contains(&query_lower)
+            {
+                context.type_impls.push(type_impl.clone());
+                context.related_files.push(type_impl.file.clone());
+            }
+        }
+
+        for binding in &self.code_graph.di_bindings {
+            if binding.file.to_lowercase().contains(&query_lower)
+                || binding.language.to_lowercase().contains(&query_lower)
+                || binding.abstract_type.to_lowercase().contains(&query_lower)
+                || binding.concrete_type.to_lowercase().contains(&query_lower)
+                || binding.framework.to_lowercase().contains(&query_lower)
+                || binding
+                    .lifetime
+                    .as_deref()
+                    .is_some_and(|lifetime| lifetime.to_lowercase().contains(&query_lower))
+            {
+                context.di_bindings.push(binding.clone());
+                context.related_files.push(binding.file.clone());
             }
         }
 
@@ -200,6 +273,9 @@ impl ContextEngine {
             code: Vec::new(),
             imports: Vec::new(),
             calls: Vec::new(),
+            routes: Vec::new(),
+            type_impls: Vec::new(),
+            di_bindings: Vec::new(),
             related_files: Vec::new(),
             bridge_edges: Vec::new(),
             warnings: Vec::new(),
@@ -226,6 +302,28 @@ impl ContextEngine {
             .code_graph
             .calls_in_file(path)
             .into_iter()
+            .cloned()
+            .collect();
+
+        context.routes = self
+            .code_graph
+            .routes
+            .iter()
+            .filter(|route| route.file == path || route.handler_file.as_deref() == Some(path))
+            .cloned()
+            .collect();
+        context.type_impls = self
+            .code_graph
+            .type_impls
+            .iter()
+            .filter(|type_impl| type_impl.file == path)
+            .cloned()
+            .collect();
+        context.di_bindings = self
+            .code_graph
+            .di_bindings
+            .iter()
+            .filter(|binding| binding.file == path)
             .cloned()
             .collect();
 
@@ -264,6 +362,9 @@ impl ContextEngine {
             code: Vec::new(),
             imports: Vec::new(),
             calls: Vec::new(),
+            routes: Vec::new(),
+            type_impls: Vec::new(),
+            di_bindings: Vec::new(),
             related_files: Vec::new(),
             bridge_edges: Vec::new(),
             warnings: Vec::new(),
@@ -304,6 +405,29 @@ impl ContextEngine {
             }
         }
 
+        // Attach semantic facts when the symbol is their endpoint or contract.
+        for route in &self.code_graph.routes {
+            if route.handler == name {
+                context.routes.push(route.clone());
+                context.related_files.push(route.file.clone());
+                if let Some(handler_file) = &route.handler_file {
+                    context.related_files.push(handler_file.clone());
+                }
+            }
+        }
+        for type_impl in &self.code_graph.type_impls {
+            if type_impl.implementing_type == name || type_impl.trait_or_interface == name {
+                context.type_impls.push(type_impl.clone());
+                context.related_files.push(type_impl.file.clone());
+            }
+        }
+        for binding in &self.code_graph.di_bindings {
+            if binding.abstract_type == name || binding.concrete_type == name {
+                context.di_bindings.push(binding.clone());
+                context.related_files.push(binding.file.clone());
+            }
+        }
+
         // Docs referencing this symbol
         for edge in &self.bridge {
             if matches!(edge.edge_type, BridgeEdgeType::DocReferencesSymbol) && edge.to == name {
@@ -331,6 +455,9 @@ impl ContextEngine {
             code: Vec::new(),
             imports: Vec::new(),
             calls: Vec::new(),
+            routes: Vec::new(),
+            type_impls: Vec::new(),
+            di_bindings: Vec::new(),
             related_files: Vec::new(),
             bridge_edges: Vec::new(),
             warnings: Vec::new(),
@@ -378,6 +505,32 @@ impl ContextEngine {
         context.related_files.sort();
         context.related_files.dedup();
 
+        for file_path in &context.related_files {
+            context.routes.extend(
+                self.code_graph
+                    .routes
+                    .iter()
+                    .filter(|route| {
+                        route.file == *file_path || route.handler_file.as_deref() == Some(file_path)
+                    })
+                    .cloned(),
+            );
+            context.type_impls.extend(
+                self.code_graph
+                    .type_impls
+                    .iter()
+                    .filter(|type_impl| type_impl.file == *file_path)
+                    .cloned(),
+            );
+            context.di_bindings.extend(
+                self.code_graph
+                    .di_bindings
+                    .iter()
+                    .filter(|binding| binding.file == *file_path)
+                    .cloned(),
+            );
+        }
+
         context
     }
 
@@ -404,8 +557,8 @@ impl ContextEngine {
     pub fn query_bounded(&self, query: &str, mut budget: ContextBudget) -> AgentContext {
         let query_lower = query.to_lowercase();
 
-        // Scored indices: (kind, source_index, priority, estimated_tokens)
-        // kind: 0=doc, 1=code, 2=file, 3=bridge
+        // Scored indices: (kind, source_index, priority, estimated_tokens).
+        // Kinds: 0=doc, 1=code, 2=file, 3=bridge, 4=route, 5=type impl, 6=DI.
         let mut scored: Vec<(u8, usize, Priority, usize)> = Vec::new();
 
         // Score docs
@@ -464,8 +617,92 @@ impl ContextEngine {
             }
         }
 
-        // Sort by priority (highest first), then by token cost (cheapest first) as tiebreaker
-        scored.sort_by(|a, b| b.2.cmp(&a.2).then(a.3.cmp(&b.3)));
+        // Score normalized semantic facts using their agent-visible fields.
+        for (i, route) in self.code_graph.routes.iter().enumerate() {
+            let route_text = [
+                route.method.as_str(),
+                route.path.as_str(),
+                route.handler.as_str(),
+                route.file.as_str(),
+                route.language.as_str(),
+                route.framework.as_str(),
+            ];
+            if route_text
+                .iter()
+                .any(|field| field.to_lowercase().contains(&query_lower))
+                || route
+                    .handler_file
+                    .as_deref()
+                    .is_some_and(|file| file.to_lowercase().contains(&query_lower))
+                || route
+                    .middleware
+                    .iter()
+                    .any(|middleware| middleware.to_lowercase().contains(&query_lower))
+            {
+                let tokens = estimate_tokens(&route.method)
+                    + estimate_tokens(&route.path)
+                    + estimate_tokens(&route.handler)
+                    + estimate_tokens(&route.file)
+                    + estimate_tokens(&route.framework)
+                    + estimate_tokens(&route.language)
+                    + route
+                        .middleware
+                        .iter()
+                        .map(|middleware| estimate_tokens(middleware))
+                        .sum::<usize>()
+                    + 15;
+                scored.push((4, i, Priority::Fuzzy, tokens));
+            }
+        }
+
+        for (i, type_impl) in self.code_graph.type_impls.iter().enumerate() {
+            if type_impl.file.to_lowercase().contains(&query_lower)
+                || type_impl.language.to_lowercase().contains(&query_lower)
+                || type_impl
+                    .implementing_type
+                    .to_lowercase()
+                    .contains(&query_lower)
+                || type_impl
+                    .trait_or_interface
+                    .to_lowercase()
+                    .contains(&query_lower)
+            {
+                let tokens = estimate_tokens(&type_impl.implementing_type)
+                    + estimate_tokens(&type_impl.trait_or_interface)
+                    + estimate_tokens(&type_impl.file)
+                    + 15;
+                scored.push((5, i, Priority::Fuzzy, tokens));
+            }
+        }
+
+        for (i, binding) in self.code_graph.di_bindings.iter().enumerate() {
+            if binding.file.to_lowercase().contains(&query_lower)
+                || binding.language.to_lowercase().contains(&query_lower)
+                || binding.abstract_type.to_lowercase().contains(&query_lower)
+                || binding.concrete_type.to_lowercase().contains(&query_lower)
+                || binding.framework.to_lowercase().contains(&query_lower)
+                || binding
+                    .lifetime
+                    .as_deref()
+                    .is_some_and(|lifetime| lifetime.to_lowercase().contains(&query_lower))
+            {
+                let tokens = estimate_tokens(&binding.abstract_type)
+                    + estimate_tokens(&binding.concrete_type)
+                    + estimate_tokens(&binding.file)
+                    + binding.lifetime.as_deref().map_or(0, estimate_tokens)
+                    + 15;
+                scored.push((6, i, Priority::Fuzzy, tokens));
+            }
+        }
+
+        // Sort by priority (highest first), then token cost, fact category, and
+        // source position so every bounded query has a deterministic selection.
+        scored.sort_by(|a, b| {
+            b.2.cmp(&a.2)
+                .then(a.3.cmp(&b.3))
+                .then(a.0.cmp(&b.0))
+                .then(a.1.cmp(&b.1))
+        });
 
         let mut context = AgentContext {
             query: query.to_string(),
@@ -473,6 +710,9 @@ impl ContextEngine {
             code: Vec::new(),
             imports: Vec::new(),
             calls: Vec::new(),
+            routes: Vec::new(),
+            type_impls: Vec::new(),
+            di_bindings: Vec::new(),
             related_files: Vec::new(),
             bridge_edges: Vec::new(),
             warnings: Vec::new(),
@@ -494,6 +734,19 @@ impl ContextEngine {
                 }
                 3 if budget.consume(tokens) => {
                     context.bridge_edges.push(self.bridge[idx].clone());
+                }
+                4 if budget.consume(tokens) => {
+                    context.routes.push(self.code_graph.routes[idx].clone());
+                }
+                5 if budget.consume(tokens) => {
+                    context
+                        .type_impls
+                        .push(self.code_graph.type_impls[idx].clone());
+                }
+                6 if budget.consume(tokens) => {
+                    context
+                        .di_bindings
+                        .push(self.code_graph.di_bindings[idx].clone());
                 }
                 _ => {}
             }
@@ -534,6 +787,8 @@ impl ContextEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use graxus_codemap::facts::{DIFact, ImplKind, RouteFact, TypeImplFact};
+    use graxus_codemap::FileNode;
 
     #[test]
     fn test_estimate_tokens() {
@@ -586,5 +841,92 @@ mod tests {
         assert_eq!(items[0].item, "b"); // Exact first
         assert_eq!(items[1].item, "a"); // Fuzzy second
         assert_eq!(items[2].item, "c"); // Bridge third
+    }
+    #[test]
+    fn test_semantic_facts_are_exposed_by_context_queries() {
+        let graph = CodeGraph::from_parts(
+            vec![FileNode {
+                path: "src/auth.rs".into(),
+                language: "rust".into(),
+                hash: "abc".into(),
+                size: 100,
+            }],
+            vec![],
+            vec![],
+            vec![],
+            vec![RouteFact {
+                id: "route:auth".into(),
+                file: "src/auth.rs".into(),
+                language: "rust".into(),
+                method: "POST".into(),
+                path: "/auth/session".into(),
+                handler: "auth_handler".into(),
+                handler_file: Some("src/auth.rs".into()),
+                line: 12,
+                framework: "axum".into(),
+                middleware: vec!["require_auth".into()],
+            }],
+            vec![TypeImplFact {
+                id: "type-impl:auth".into(),
+                file: "src/auth.rs".into(),
+                language: "rust".into(),
+                implementing_type: "AuthService".into(),
+                trait_or_interface: "AuthContract".into(),
+                line: 18,
+                kind: ImplKind::TraitImpl,
+            }],
+            vec![DIFact {
+                id: "di:auth".into(),
+                file: "src/container.rs".into(),
+                language: "rust".into(),
+                abstract_type: "AuthContract".into(),
+                concrete_type: "AuthService".into(),
+                lifetime: Some("singleton".into()),
+                line: 8,
+                framework: "shuttle".into(),
+            }],
+            vec![],
+            vec![],
+            vec![],
+        );
+        let engine = ContextEngine::new(DocGraph::new(), graph, vec![]);
+
+        let context = engine.query("auth");
+        assert_eq!(context.routes[0].path, "/auth/session");
+        assert_eq!(context.type_impls[0].trait_or_interface, "AuthContract");
+        assert_eq!(context.di_bindings[0].concrete_type, "AuthService");
+        assert_eq!(
+            context.related_files,
+            vec!["src/auth.rs".to_string(), "src/container.rs".to_string()]
+        );
+
+        let file_context = engine.file_context("src/auth.rs");
+        assert_eq!(file_context.routes.len(), 1);
+        assert_eq!(file_context.type_impls.len(), 1);
+        assert!(file_context.di_bindings.is_empty());
+
+        let symbol_context = engine.symbol_context("AuthContract");
+        assert_eq!(symbol_context.type_impls.len(), 1);
+        assert_eq!(symbol_context.di_bindings.len(), 1);
+
+        let bounded = engine.query_bounded("auth", ContextBudget::new(1_000));
+        assert_eq!(bounded.routes.len(), 1);
+        assert_eq!(bounded.type_impls.len(), 1);
+        assert_eq!(bounded.di_bindings.len(), 1);
+
+        let legacy: AgentContext = serde_json::from_value(serde_json::json!({
+            "query": "auth",
+            "docs": [],
+            "code": [],
+            "imports": [],
+            "calls": [],
+            "related_files": [],
+            "bridge_edges": [],
+            "warnings": []
+        }))
+        .expect("deserialize legacy context");
+        assert!(legacy.routes.is_empty());
+        assert!(legacy.type_impls.is_empty());
+        assert!(legacy.di_bindings.is_empty());
     }
 }

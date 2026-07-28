@@ -79,9 +79,7 @@ pub fn detect_file(path: &Path) -> (FileKind, Language) {
         "go" => (FileKind::Code, Language::Go),
         "py" | "pyi" => (FileKind::Code, Language::Python),
         "c" | "h" => (FileKind::Code, Language::C),
-        "cc" | "cp" | "cpp" | "cxx" | "hh" | "hpp" | "hxx" => {
-            (FileKind::Code, Language::Cpp)
-        }
+        "cc" | "cp" | "cpp" | "cxx" | "hh" | "hpp" | "hxx" => (FileKind::Code, Language::Cpp),
         "cs" => (FileKind::Code, Language::CSharp),
         "java" => (FileKind::Code, Language::Java),
         "kt" | "kts" => (FileKind::Code, Language::Kotlin),

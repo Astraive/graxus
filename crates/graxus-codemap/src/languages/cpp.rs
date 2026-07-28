@@ -37,11 +37,8 @@ impl CppIndexer {
                 r#"(preproc_include path: (string_literal) @path) @include"#,
             )
             .expect("valid cpp quote include query"),
-            import_using_query: Query::new(
-                &lang,
-                r#"(using_declaration (identifier) @name) @use"#,
-            )
-            .expect("valid cpp using query"),
+            import_using_query: Query::new(&lang, r#"(using_declaration (identifier) @name) @use"#)
+                .expect("valid cpp using query"),
             sym_func_query: Query::new(
                 &lang,
                 r#"(function_definition
@@ -122,8 +119,7 @@ impl LanguageIndexer for CppIndexer {
             let include_queries = [&self.import_system_query, &self.import_quote_query];
             for query in &include_queries {
                 let mut cursor = QueryCursor::new();
-                let mut matches =
-                    cursor.matches(query, tree.root_node(), source.as_bytes());
+                let mut matches = cursor.matches(query, tree.root_node(), source.as_bytes());
                 while let Some(m) = matches.next() {
                     let mut path = String::new();
                     let mut line = 0;
@@ -154,8 +150,11 @@ impl LanguageIndexer for CppIndexer {
         // using declarations
         {
             let mut cursor = QueryCursor::new();
-            let mut matches =
-                cursor.matches(&self.import_using_query, tree.root_node(), source.as_bytes());
+            let mut matches = cursor.matches(
+                &self.import_using_query,
+                tree.root_node(),
+                source.as_bytes(),
+            );
             while let Some(m) = matches.next() {
                 let mut name = String::new();
                 let mut line = 0;
@@ -409,8 +408,11 @@ impl LanguageIndexer for CppIndexer {
         // Namespaces
         {
             let mut cursor = QueryCursor::new();
-            let mut matches =
-                cursor.matches(&self.sym_namespace_query, tree.root_node(), source.as_bytes());
+            let mut matches = cursor.matches(
+                &self.sym_namespace_query,
+                tree.root_node(),
+                source.as_bytes(),
+            );
             while let Some(m) = matches.next() {
                 let mut name = String::new();
                 let mut start = 0usize;
@@ -462,8 +464,7 @@ impl LanguageIndexer for CppIndexer {
         // Function calls: foo()
         {
             let mut cursor = QueryCursor::new();
-            let mut matches =
-                cursor.matches(&self.call_query, tree.root_node(), source.as_bytes());
+            let mut matches = cursor.matches(&self.call_query, tree.root_node(), source.as_bytes());
             while let Some(m) = matches.next() {
                 let mut callee = String::new();
                 let mut line = 0usize;
@@ -558,7 +559,10 @@ mod tests {
         let tree = parse_cpp(source);
         let indexer = CppIndexer::new();
         let symbols = indexer.extract_symbols(&tree, source, "test.cpp");
-        let classes: Vec<_> = symbols.iter().filter(|s| s.kind == SymbolKind::Class).collect();
+        let classes: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Class)
+            .collect();
         assert_eq!(classes.len(), 1);
         assert_eq!(classes[0].name, "MyClass");
     }
@@ -572,7 +576,10 @@ class Container {
         let tree = parse_cpp(source);
         let indexer = CppIndexer::new();
         let symbols = indexer.extract_symbols(&tree, source, "test.hpp");
-        let classes: Vec<_> = symbols.iter().filter(|s| s.kind == SymbolKind::Class).collect();
+        let classes: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Class)
+            .collect();
         assert_eq!(classes.len(), 1);
         assert_eq!(classes[0].name, "Container");
     }

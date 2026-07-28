@@ -6,8 +6,8 @@ pub mod symbol;
 pub mod type_impl;
 
 pub use call::CallFactRecord;
-pub use import::ImportFactRecord;
-pub use symbol::SymbolFactRecord;
-pub use route::RouteFact;
-pub use type_impl::{ImplKind, TypeImplFact};
 pub use di::DIFact;
+pub use import::ImportFactRecord;
+pub use route::RouteFact;
+pub use symbol::SymbolFactRecord;
+pub use type_impl::{ImplKind, TypeImplFact};

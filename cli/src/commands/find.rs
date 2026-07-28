@@ -94,7 +94,12 @@ pub fn run(
                     for i in start..end {
                         let prefix = if i == center { ">" } else { " " };
                         let n = i + 1;
-                        println!("  {} {:>4}: {}", prefix.dimmed(), n.to_string().dimmed(), lines[i]);
+                        println!(
+                            "  {} {:>4}: {}",
+                            prefix.dimmed(),
+                            n.to_string().dimmed(),
+                            lines[i]
+                        );
                     }
                     matches += 1;
                     continue;

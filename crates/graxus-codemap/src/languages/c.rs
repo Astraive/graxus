@@ -389,7 +389,10 @@ mod tests {
         let tree = parse_c(source);
         let indexer = CIndexer::new();
         let symbols = indexer.extract_symbols(&tree, source, "test.c");
-        let structs: Vec<_> = symbols.iter().filter(|s| s.kind == SymbolKind::Struct).collect();
+        let structs: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Struct)
+            .collect();
         assert_eq!(structs.len(), 1);
         assert_eq!(structs[0].name, "Point");
     }

@@ -18,8 +18,11 @@ impl SwiftIndexer {
     pub fn new() -> Self {
         let lang: tree_sitter::Language = tree_sitter_swift::LANGUAGE.into();
         Self {
-            import_query: Query::new(&lang, r#"(import_declaration (identifier) @module) @import"#)
-                .expect("valid swift import query"),
+            import_query: Query::new(
+                &lang,
+                r#"(import_declaration (identifier) @module) @import"#,
+            )
+            .expect("valid swift import query"),
             sym_func_query: Query::new(&lang, r#"(function_declaration (identifier) @name) @def"#)
                 .expect("valid swift func query"),
             sym_class_query: Query::new(&lang, r#"(class_declaration (identifier) @name) @def"#)

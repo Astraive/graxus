@@ -15,7 +15,13 @@ use crate::context::CliContext;
 /// * `name` - Optional project name override
 /// * `force` - If true, overwrite existing graxus.yaml
 /// * `minimal` - If true, create a minimal configuration
-pub fn run(ctx: &CliContext, path: &Path, _name: Option<&str>, force: bool, _minimal: bool) -> Result<()> {
+pub fn run(
+    ctx: &CliContext,
+    path: &Path,
+    _name: Option<&str>,
+    force: bool,
+    _minimal: bool,
+) -> Result<()> {
     // `init` intentionally ignores `--root`/`--config` since it bootstraps a new
     // project at the given path rather than operating on an existing one.
     let _ = ctx;

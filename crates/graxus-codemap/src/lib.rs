@@ -6,8 +6,8 @@ use std::path::Path;
 use std::sync::OnceLock;
 use tracing::instrument;
 
-use graxus_core::ScannedFile;
 use crate::facts::{DIFact, RouteFact, TypeImplFact};
+use graxus_core::ScannedFile;
 
 pub mod extractor;
 pub mod facts;
@@ -1023,7 +1023,9 @@ impl CodeGraph {
 
     /// Return parser provenance and native facts for a file.
     pub fn parser_result_for_file(&self, path: &str) -> Option<&FileParserResult> {
-        self.parser_results.iter().find(|result| result.file == path)
+        self.parser_results
+            .iter()
+            .find(|result| result.file == path)
     }
 
     /// Find a lossless parser-native fact by its normalized fact id.
@@ -1292,7 +1294,12 @@ impl CodemapBuilder {
         indexer: &dyn crate::LanguageIndexer,
         source: &str,
         rel: &str,
-    ) -> (Vec<ImportFact>, Vec<SymbolFact>, Vec<CallFact>, Vec<VariableFact>) {
+    ) -> (
+        Vec<ImportFact>,
+        Vec<SymbolFact>,
+        Vec<CallFact>,
+        Vec<VariableFact>,
+    ) {
         let mut parser = tree_sitter::Parser::new();
         if let Err(e) = parser.set_language(&indexer.tree_sitter_language()) {
             tracing::warn!("Failed to set tree-sitter language for {rel}: {e}");
@@ -1349,8 +1356,7 @@ impl CodemapBuilder {
             }
         }
 
-        let (imports, symbols, calls, variables) =
-            self.tree_sitter_extract(indexer, source, rel);
+        let (imports, symbols, calls, variables) = self.tree_sitter_extract(indexer, source, rel);
         FileExtraction {
             imports,
             symbols,
@@ -1377,6 +1383,8 @@ impl CodemapBuilder {
         let mut all_calls = Vec::new();
         let mut all_variables = Vec::new();
         let mut all_type_impls = Vec::new();
+        let mut all_routes = Vec::new();
+        let mut all_di_bindings = Vec::new();
         let mut all_decorators = Vec::new();
         let mut all_macros = Vec::new();
         let mut parser_results = Vec::new();
@@ -1439,6 +1447,11 @@ impl CodemapBuilder {
                 all_calls.extend(calls);
                 all_variables.extend(vars);
                 all_type_impls.extend(type_impls);
+                all_routes.extend(frameworks::extract_routes(rel, &source, lang_id));
+                all_type_impls.extend(resolver::type_resolver::extract_type_impls(
+                    rel, &source, lang_id,
+                ));
+                all_di_bindings.extend(resolver::di_resolver::extract_di_bindings(rel, &source));
                 parser_results.push(parser);
 
                 file_nodes.push(FileNode {
@@ -1492,6 +1505,25 @@ impl CodemapBuilder {
             }
         }
 
+        let mut routes = resolver::route_resolver::resolve_routes(all_routes, &all_symbols);
+        for (i, route) in routes.iter_mut().enumerate() {
+            route.id = format!("route:{}:{}:{}:{}", route.file, route.line, route.method, i);
+        }
+        let mut type_impls = resolver::type_resolver::resolve_type_impls(all_type_impls);
+        for (i, type_impl) in type_impls.iter_mut().enumerate() {
+            type_impl.id = format!(
+                "type_impl:{}:{}:{}:{}",
+                type_impl.file, type_impl.line, type_impl.implementing_type, i
+            );
+        }
+        let mut di_bindings = resolver::di_resolver::resolve_di_bindings(all_di_bindings);
+        for (i, binding) in di_bindings.iter_mut().enumerate() {
+            binding.id = format!(
+                "di:{}:{}:{}:{}",
+                binding.file, binding.line, binding.abstract_type, i
+            );
+        }
+
         // Build edges
         let mut edges = Vec::new();
         for imp in &all_imports {
@@ -1519,7 +1551,7 @@ impl CodemapBuilder {
                 });
             }
         }
-        for type_impl in &all_type_impls {
+        for type_impl in &type_impls {
             edges.push(CodeEdge {
                 from: format!("{}::{}", type_impl.file, type_impl.implementing_type),
                 to: type_impl.trait_or_interface.clone(),
@@ -1539,9 +1571,9 @@ impl CodemapBuilder {
             symbols: all_symbols,
             imports: all_imports,
             calls: all_calls,
-            routes: Vec::new(),
-            type_impls: resolver::type_resolver::resolve_type_impls(all_type_impls),
-            di_bindings: Vec::new(),
+            routes,
+            type_impls,
+            di_bindings,
             edges,
             type_hints: Vec::new(),
             variables: all_variables,

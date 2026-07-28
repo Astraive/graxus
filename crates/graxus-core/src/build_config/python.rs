@@ -23,7 +23,8 @@ pub fn parse(root: &Path) -> Result<Option<PythonConfig>> {
     let re_project_name = Regex::new(r#"(?m)^\[project\]\s*\nname\s*=\s*["']([^"']+)["']"#)?;
     let re_poetry_name = Regex::new(r#"(?m)^\[tool\.poetry\]\s*\nname\s*=\s*["']([^"']+)["']"#)?;
     let re_python_ver = Regex::new(r#"(?m)requires-python\s*=\s*[">=< ]*([0-9.]+)"#)?;
-    let re_poetry_python = Regex::new(r#"(?m)^\[tool\.poetry\.dependencies\]\s*\npython\s*=\s*["'][><= ]*([0-9.]+)"#)?;
+    let re_poetry_python =
+        Regex::new(r#"(?m)^\[tool\.poetry\.dependencies\]\s*\npython\s*=\s*["'][><= ]*([0-9.]+)"#)?;
     let re_deps = Regex::new(r#"(?m)^\[project\]\s*\ndependencies\s*=\s*\[([^\]]*)\]"#)?;
     let re_dep_str = Regex::new(r#""([^"]+)""#)?;
 

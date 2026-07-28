@@ -57,10 +57,7 @@ fn leading_text(def_node: Option<tree_sitter::Node>, source: &str, max_lines: us
 /// Rust visibility from a definition node: walks the immediate children for a
 /// `visibility_modifier` node (the tree-sitter-rust grammar exposes `pub`,
 /// `pub(crate)`, etc. this way).
-pub fn rust_visibility(
-    def_node: Option<tree_sitter::Node>,
-    source: &str,
-) -> (bool, Visibility) {
+pub fn rust_visibility(def_node: Option<tree_sitter::Node>, source: &str) -> (bool, Visibility) {
     let Some(node) = def_node else {
         return (false, Visibility::Unknown);
     };
@@ -139,10 +136,7 @@ pub fn cpp_visibility(
 // ── C# ─────────────────────────────────────────────────────────────────────
 
 /// C# visibility. Read modifier keywords on the declaration line.
-pub fn csharp_visibility(
-    def_node: Option<tree_sitter::Node>,
-    source: &str,
-) -> (bool, Visibility) {
+pub fn csharp_visibility(def_node: Option<tree_sitter::Node>, source: &str) -> (bool, Visibility) {
     let lead = leading_text(def_node, source, 2);
     // The declaration line is the last element collected; check modifiers.
     if lead.contains("public") {
@@ -172,7 +166,8 @@ pub fn typescript_visibility(
     source: &str,
 ) -> (bool, Visibility) {
     let lead = leading_text(def_node, source, 3);
-    let exported = lead.contains("export ") || lead.contains("export\t") || lead.contains("export(");
+    let exported =
+        lead.contains("export ") || lead.contains("export\t") || lead.contains("export(");
     let visibility = if lead.contains("private ") {
         Visibility::Private
     } else if lead.contains("protected ") {

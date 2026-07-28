@@ -63,8 +63,7 @@ pub fn classify_error(e: &anyhow::Error) -> i32 {
         2
     } else if msg.contains("index") || msg.contains("codemap") || msg.contains("stale") {
         3
-    } else if msg.contains("safety") || msg.contains("traversal") || msg.contains("unauthorized")
-    {
+    } else if msg.contains("safety") || msg.contains("traversal") || msg.contains("unauthorized") {
         4
     } else {
         1

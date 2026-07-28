@@ -149,7 +149,8 @@ impl LanguageIndexer for JavaIndexer {
         let mut calls = Vec::new();
         {
             let mut cursor = QueryCursor::new();
-            let mut matches = cursor.matches(&self.call_attr_query, tree.root_node(), source.as_bytes());
+            let mut matches =
+                cursor.matches(&self.call_attr_query, tree.root_node(), source.as_bytes());
             while let Some(m) = matches.next() {
                 let mut object = String::new();
                 let mut method = String::new();
@@ -186,7 +187,8 @@ impl LanguageIndexer for JavaIndexer {
         }
         {
             let mut cursor = QueryCursor::new();
-            let mut matches = cursor.matches(&self.call_ident_query, tree.root_node(), source.as_bytes());
+            let mut matches =
+                cursor.matches(&self.call_ident_query, tree.root_node(), source.as_bytes());
             while let Some(m) = matches.next() {
                 let mut callee = String::new();
                 let mut line = 0usize;

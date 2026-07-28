@@ -6,7 +6,43 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use crate::bridge::BridgeEdge;
-use crate::context::{estimate_tokens, ContextBudget};
+use crate::context::estimate_tokens;
+
+const EXPORT_OVERHEAD_TOKENS: usize = 50;
+
+/// Clone complete facts in stable order until their category allocation is full.
+///
+/// Ordering by a normalized fact key makes selection independent of collection
+/// insertion order, while cloning the selected value keeps each fact intact.
+fn bounded_facts<T: Clone>(
+    facts: &[T],
+    allocation: usize,
+    compare: impl Fn(&T, &T) -> std::cmp::Ordering,
+    tokens: impl Fn(&T) -> usize,
+) -> Vec<T> {
+    let mut ordered: Vec<&T> = facts.iter().collect();
+    ordered.sort_unstable_by(|left, right| compare(left, right));
+
+    let mut used = 0usize;
+    ordered
+        .into_iter()
+        .filter_map(|fact| {
+            let fact_tokens = tokens(fact);
+            if used + fact_tokens <= allocation {
+                used += fact_tokens;
+                Some(fact.clone())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn serialized_fact_tokens<T: Serialize>(fact: &T, overhead: usize) -> usize {
+    serde_json::to_string(fact)
+        .map(|json| estimate_tokens(&json) + overhead)
+        .unwrap_or(overhead)
+}
 
 /// Full export of Graxus knowledge for an AI agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,40 +99,47 @@ impl AgentExport {
             imports: self.code_graph.imports.len(),
             calls: self.code_graph.calls.len(),
             bridge_edges: self.bridge.len(),
+            routes: self.code_graph.routes.len(),
+            type_impls: self.code_graph.type_impls.len(),
+            di_bindings: self.code_graph.di_bindings.len(),
         }
     }
 
-    /// Create a bounded export that fits within a token budget.
-    /// Truncates symbols, imports, calls, and bridge edges to fit.
+    /// Create a bounded export that fits semantic and structural facts into
+    /// deterministic category allocations without splitting individual facts.
     pub fn export_bounded(&self, max_tokens: usize) -> AgentExport {
-        let mut budget = ContextBudget::new(max_tokens);
+        let content_budget =
+            max_tokens.saturating_sub(estimate_tokens(&self.project_name) + EXPORT_OVERHEAD_TOKENS);
 
-        // Budget the high-level counts
-        let _ = budget.consume(estimate_tokens(&self.project_name) + 50); // overhead
-
-        // Allocate budget proportionally:
-        // 40% symbols, 20% imports, 20% calls, 10% bridge, 10% docs
-        let sym_budget = max_tokens * 40 / 100;
-        let imp_budget = max_tokens * 20 / 100;
-        let call_budget = max_tokens * 20 / 100;
-        let bridge_budget = max_tokens * 10 / 100;
-        let doc_budget = max_tokens * 10 / 100;
+        // Semantic facts get 45% of the available tokens. Each category is
+        // independently bounded so a large route or binding cannot starve a
+        // different semantic relationship class.
+        let sym_budget = content_budget * 25 / 100;
+        let imp_budget = content_budget * 10 / 100;
+        let call_budget = content_budget * 10 / 100;
+        let route_budget = content_budget * 15 / 100;
+        let type_impl_budget = content_budget * 15 / 100;
+        let di_binding_budget = content_budget * 15 / 100;
+        let bridge_budget = content_budget * 5 / 100;
+        let doc_budget = content_budget * 5 / 100;
 
         let mut sym_tok = 0usize;
         let bounded_symbols: Vec<_> = self
             .code_graph
             .symbols
             .iter()
-            .filter(|s| {
+            .filter(|symbol| {
                 let parser_tokens = self
                     .code_graph
-                    .parser_fact(&s.id)
+                    .parser_fact(&symbol.id)
                     .and_then(|fact| serde_json::to_string(&fact.data).ok())
                     .map_or(0, |raw| estimate_tokens(&raw));
-                let t =
-                    estimate_tokens(&s.name) + estimate_tokens(&s.file) + parser_tokens + 20;
-                if sym_tok + t <= sym_budget {
-                    sym_tok += t;
+                let tokens = estimate_tokens(&symbol.name)
+                    + estimate_tokens(&symbol.file)
+                    + parser_tokens
+                    + 20;
+                if sym_tok + tokens <= sym_budget {
+                    sym_tok += tokens;
                     true
                 } else {
                     false
@@ -110,16 +153,18 @@ impl AgentExport {
             .code_graph
             .imports
             .iter()
-            .filter(|i| {
+            .filter(|import| {
                 let parser_tokens = self
                     .code_graph
-                    .parser_fact(&i.id)
+                    .parser_fact(&import.id)
                     .and_then(|fact| serde_json::to_string(&fact.data).ok())
                     .map_or(0, |raw| estimate_tokens(&raw));
-                let t =
-                    estimate_tokens(&i.source) + estimate_tokens(&i.file) + parser_tokens + 10;
-                if imp_tok + t <= imp_budget {
-                    imp_tok += t;
+                let tokens = estimate_tokens(&import.source)
+                    + estimate_tokens(&import.file)
+                    + parser_tokens
+                    + 10;
+                if imp_tok + tokens <= imp_budget {
+                    imp_tok += tokens;
                     true
                 } else {
                     false
@@ -133,16 +178,18 @@ impl AgentExport {
             .code_graph
             .calls
             .iter()
-            .filter(|c| {
+            .filter(|call| {
                 let parser_tokens = self
                     .code_graph
-                    .parser_fact(&c.id)
+                    .parser_fact(&call.id)
                     .and_then(|fact| serde_json::to_string(&fact.data).ok())
                     .map_or(0, |raw| estimate_tokens(&raw));
-                let t =
-                    estimate_tokens(&c.callee_text) + estimate_tokens(&c.file) + parser_tokens + 15;
-                if call_tok + t <= call_budget {
-                    call_tok += t;
+                let tokens = estimate_tokens(&call.callee_text)
+                    + estimate_tokens(&call.file)
+                    + parser_tokens
+                    + 15;
+                if call_tok + tokens <= call_budget {
+                    call_tok += tokens;
                     true
                 } else {
                     false
@@ -150,15 +197,53 @@ impl AgentExport {
             })
             .cloned()
             .collect();
+
+        let bounded_routes = bounded_facts(
+            &self.code_graph.routes,
+            route_budget,
+            |left, right| {
+                left.id
+                    .cmp(&right.id)
+                    .then(left.file.cmp(&right.file))
+                    .then(left.method.cmp(&right.method))
+                    .then(left.path.cmp(&right.path))
+                    .then(left.handler.cmp(&right.handler))
+            },
+            |route| serialized_fact_tokens(route, 15),
+        );
+        let bounded_type_impls = bounded_facts(
+            &self.code_graph.type_impls,
+            type_impl_budget,
+            |left, right| {
+                left.id
+                    .cmp(&right.id)
+                    .then(left.file.cmp(&right.file))
+                    .then(left.implementing_type.cmp(&right.implementing_type))
+                    .then(left.trait_or_interface.cmp(&right.trait_or_interface))
+            },
+            |type_impl| serialized_fact_tokens(type_impl, 15),
+        );
+        let bounded_di_bindings = bounded_facts(
+            &self.code_graph.di_bindings,
+            di_binding_budget,
+            |left, right| {
+                left.id
+                    .cmp(&right.id)
+                    .then(left.file.cmp(&right.file))
+                    .then(left.abstract_type.cmp(&right.abstract_type))
+                    .then(left.concrete_type.cmp(&right.concrete_type))
+            },
+            |binding| serialized_fact_tokens(binding, 15),
+        );
 
         let mut bridge_tok = 0usize;
         let bounded_bridge: Vec<_> = self
             .bridge
             .iter()
-            .filter(|e| {
-                let t = estimate_tokens(&e.from) + estimate_tokens(&e.to) + 10;
-                if bridge_tok + t <= bridge_budget {
-                    bridge_tok += t;
+            .filter(|edge| {
+                let tokens = estimate_tokens(&edge.from) + estimate_tokens(&edge.to) + 10;
+                if bridge_tok + tokens <= bridge_budget {
+                    bridge_tok += tokens;
                     true
                 } else {
                     false
@@ -167,17 +252,16 @@ impl AgentExport {
             .cloned()
             .collect();
 
-        // Docs: keep all nodes (usually few), but truncate node content is not needed
-        // since DocNode is already compact
+        // DocNode metadata is compact, so it is safe to retain full nodes.
         let mut doc_tok = 0usize;
         let bounded_docs: Vec<_> = self
             .doc_graph
             .nodes
             .iter()
-            .filter(|d| {
-                let t = estimate_tokens(&d.title) + estimate_tokens(&d.path) + 20;
-                if doc_tok + t <= doc_budget {
-                    doc_tok += t;
+            .filter(|doc| {
+                let tokens = estimate_tokens(&doc.title) + estimate_tokens(&doc.path) + 20;
+                if doc_tok + tokens <= doc_budget {
+                    doc_tok += tokens;
                     true
                 } else {
                     false
@@ -186,6 +270,9 @@ impl AgentExport {
             .cloned()
             .collect();
 
+        // Parser results are raw parser provenance, not a second representation
+        // of semantic facts. Keep only parser facts for retained normalized
+        // symbols, imports, and calls.
         let retained_fact_ids = bounded_symbols
             .iter()
             .map(|fact| fact.id.clone())
@@ -209,9 +296,9 @@ impl AgentExport {
             bounded_symbols,
             bounded_imports,
             bounded_calls,
-            self.code_graph.routes.clone(),
-            self.code_graph.type_impls.clone(),
-            self.code_graph.di_bindings.clone(),
+            bounded_routes,
+            bounded_type_impls,
+            bounded_di_bindings,
             self.code_graph.edges.clone(),
             self.code_graph.type_hints.clone(),
             self.code_graph.variables.clone(),
@@ -241,14 +328,24 @@ pub struct ExportStats {
     pub imports: usize,
     pub calls: usize,
     pub bridge_edges: usize,
+    /// HTTP route facts.
+    #[serde(default)]
+    pub routes: usize,
+    /// Trait/interface/inheritance relationship facts.
+    #[serde(default)]
+    pub type_impls: usize,
+    /// Dependency-injection binding facts.
+    #[serde(default)]
+    pub di_bindings: usize,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use graxus_codemap::facts::{DIFact, ImplKind, RouteFact, TypeImplFact};
     use graxus_codemap::{
-        CallFact, CallKind, ConfidenceScore, FileNode, ImportFact, ImportKind, ResolutionMethod,
-        FileParserResult, ParserFact, ParserFactKind, SymbolFact, SymbolKind, Visibility,
+        CallFact, CallKind, ConfidenceScore, FileNode, FileParserResult, ImportFact, ImportKind,
+        ParserFact, ParserFactKind, ResolutionMethod, SymbolFact, SymbolKind, Visibility,
     };
     use graxus_core::ParserBackend;
 
@@ -319,9 +416,51 @@ mod tests {
                 column: 4,
                 confidence: ConfidenceScore::new(85.0, ResolutionMethod::PathMatchOnly),
             }],
-            routes: vec![],
-            type_impls: vec![],
-            di_bindings: vec![],
+            routes: vec![
+                RouteFact {
+                    id: "route:z-auth".into(),
+                    file: "src/auth.rs".into(),
+                    language: "rust".into(),
+                    method: "POST".into(),
+                    path: "/auth/session".into(),
+                    handler: "create_session".into(),
+                    handler_file: Some("src/auth_handlers.rs".into()),
+                    line: 18,
+                    framework: "axum".into(),
+                    middleware: vec!["require_auth".into()],
+                },
+                RouteFact {
+                    id: "route:a-auth".into(),
+                    file: "src/auth.rs".into(),
+                    language: "rust".into(),
+                    method: "GET".into(),
+                    path: "/auth/session".into(),
+                    handler: "current_session".into(),
+                    handler_file: Some("src/auth_handlers.rs".into()),
+                    line: 12,
+                    framework: "axum".into(),
+                    middleware: vec!["require_auth".into()],
+                },
+            ],
+            type_impls: vec![TypeImplFact {
+                id: "type-impl:auth-service".into(),
+                file: "src/auth.rs".into(),
+                language: "rust".into(),
+                implementing_type: "AuthService".into(),
+                trait_or_interface: "AuthContract".into(),
+                line: 24,
+                kind: ImplKind::TraitImpl,
+            }],
+            di_bindings: vec![DIFact {
+                id: "di:auth-service".into(),
+                file: "src/container.rs".into(),
+                language: "rust".into(),
+                abstract_type: "AuthContract".into(),
+                concrete_type: "AuthService".into(),
+                lifetime: Some("singleton".into()),
+                line: 10,
+                framework: "shuttle".into(),
+            }],
             edges: vec![],
             type_hints: vec![],
             variables: vec![],
@@ -364,6 +503,13 @@ mod tests {
         assert_eq!(bounded.code_graph.symbols.len(), 100);
         assert_eq!(bounded.code_graph.parser_results.len(), 1);
         assert_eq!(bounded.code_graph.parser_results[0].facts.len(), 1);
+        assert_eq!(bounded.code_graph.routes.len(), 2);
+        assert_eq!(bounded.code_graph.type_impls.len(), 1);
+        assert_eq!(bounded.code_graph.di_bindings.len(), 1);
+        assert_eq!(
+            bounded.code_graph.routes[0].middleware,
+            vec!["require_auth".to_string()]
+        );
     }
 
     #[test]
@@ -374,5 +520,77 @@ mod tests {
         assert_eq!(stats.symbols, 100);
         assert_eq!(stats.imports, 1);
         assert_eq!(stats.calls, 1);
+        assert_eq!(stats.routes, 2);
+        assert_eq!(stats.type_impls, 1);
+        assert_eq!(stats.di_bindings, 1);
+    }
+
+    #[test]
+    fn test_semantic_facts_round_trip_and_bounded_selection_are_deterministic() {
+        let export = make_export();
+        let ordinary: AgentExport =
+            serde_json::from_str(&serde_json::to_string(&export).expect("serialize export"))
+                .expect("deserialize export");
+        assert_eq!(ordinary.code_graph.routes.len(), 2);
+        assert_eq!(ordinary.code_graph.type_impls.len(), 1);
+        assert_eq!(ordinary.code_graph.di_bindings.len(), 1);
+        assert_eq!(
+            ordinary.code_graph.di_bindings[0].lifetime.as_deref(),
+            Some("singleton")
+        );
+
+        // Use an allocation that fits exactly one complete route fact. Selection
+        // must not depend on the source collection's reverse lexical ordering.
+        let largest_route = export
+            .code_graph
+            .routes
+            .iter()
+            .map(|route| serialized_fact_tokens(route, 15))
+            .max()
+            .expect("route fixture");
+        let content_budget = (largest_route * 100).div_ceil(15);
+        let max_tokens =
+            content_budget + estimate_tokens(&export.project_name) + EXPORT_OVERHEAD_TOKENS;
+
+        let first = export.export_bounded(max_tokens);
+        let second = export.export_bounded(max_tokens);
+        assert_eq!(first.code_graph.routes.len(), 1);
+        assert_eq!(first.code_graph.routes[0].id, "route:a-auth");
+        assert_eq!(
+            serde_json::to_value(&first.code_graph.routes[0]).expect("serialize route"),
+            serde_json::to_value(&export.code_graph.routes[1]).expect("serialize route")
+        );
+        assert_eq!(
+            first
+                .code_graph
+                .routes
+                .iter()
+                .map(|route| route.id.as_str())
+                .collect::<Vec<_>>(),
+            second
+                .code_graph
+                .routes
+                .iter()
+                .map(|route| route.id.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_export_stats_default_missing_semantic_counts() {
+        let stats: ExportStats = serde_json::from_value(serde_json::json!({
+            "doc_nodes": 1,
+            "doc_edges": 0,
+            "code_files": 1,
+            "symbols": 2,
+            "imports": 3,
+            "calls": 4,
+            "bridge_edges": 5
+        }))
+        .expect("deserialize legacy stats");
+
+        assert_eq!(stats.routes, 0);
+        assert_eq!(stats.type_impls, 0);
+        assert_eq!(stats.di_bindings, 0);
     }
 }

@@ -1,8 +1,8 @@
 //! SQLite storage backend for Graxus index.
 //!
 //! Provides a persistent, indexed store for code metadata (files, symbols,
-//! imports, call relationships) backed by an SQLite database with WAL journaling
-//! and foreign-key enforcement enabled.
+//! imports, call relationships, and semantic facts) backed by an SQLite
+//! database with WAL journaling and foreign-key enforcement enabled.
 
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
@@ -85,6 +85,51 @@ pub struct ParserFactRecord {
     pub file: String,
     pub kind: String,
     pub data_json: String,
+}
+
+/// A persisted HTTP/API route fact.
+///
+/// `middleware` is decoded from the JSON array stored in SQLite. It defaults
+/// to an empty list when deserializing older serialized records that omit it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RouteRecord {
+    pub id: String,
+    pub file: String,
+    pub language: String,
+    pub method: String,
+    pub path: String,
+    pub handler: String,
+    pub handler_file: Option<String>,
+    pub line: usize,
+    pub framework: String,
+    #[serde(default)]
+    pub middleware: Vec<String>,
+}
+
+/// A persisted trait, interface, inheritance, or extension fact.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TypeImplRecord {
+    pub id: String,
+    pub file: String,
+    pub language: String,
+    pub implementing_type: String,
+    pub trait_or_interface: String,
+    pub line: usize,
+    /// Canonical snake_case relationship kind from the codemap fact.
+    pub kind: String,
+}
+
+/// A persisted dependency-injection binding fact.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DIBindingRecord {
+    pub id: String,
+    pub file: String,
+    pub language: String,
+    pub abstract_type: String,
+    pub concrete_type: String,
+    pub lifetime: Option<String>,
+    pub line: usize,
+    pub framework: String,
 }
 
 /// SQLite-backed index store.
@@ -208,6 +253,76 @@ impl SqliteStore {
         Ok(())
     }
 
+    /// Insert or update one HTTP/API route fact.
+    ///
+    /// Middleware is serialized with `serde_json`, so arbitrary middleware
+    /// names are stored as a valid JSON array rather than interpolated SQL.
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_route(
+        &self,
+        id: &str,
+        file: &str,
+        language: &str,
+        method: &str,
+        path: &str,
+        handler: &str,
+        handler_file: Option<&str>,
+        line: usize,
+        framework: &str,
+        middleware: &[String],
+    ) -> Result<()> {
+        let middleware_json =
+            serde_json::to_string(middleware).context("failed to serialize route middleware")?;
+        let line = i64::try_from(line).context("route line exceeds SQLite INTEGER range")?;
+        self.conn.execute(
+            "INSERT INTO routes (id, file, language, method, path, handler, handler_file, line, framework, middleware) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) ON CONFLICT(id) DO UPDATE SET file = excluded.file, language = excluded.language, method = excluded.method, path = excluded.path, handler = excluded.handler, handler_file = excluded.handler_file, line = excluded.line, framework = excluded.framework, middleware = excluded.middleware",
+            params![id, file, language, method, path, handler, handler_file, line, framework, middleware_json],
+        )?;
+        Ok(())
+    }
+
+    /// Insert or update one trait, interface, inheritance, or extension fact.
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_type_impl(
+        &self,
+        id: &str,
+        file: &str,
+        language: &str,
+        implementing_type: &str,
+        trait_or_interface: &str,
+        line: usize,
+        kind: &str,
+    ) -> Result<()> {
+        let line =
+            i64::try_from(line).context("type implementation line exceeds SQLite INTEGER range")?;
+        self.conn.execute(
+            "INSERT INTO type_impls (id, file, language, implementing_type, trait_or_interface, line, kind) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT(id) DO UPDATE SET file = excluded.file, language = excluded.language, implementing_type = excluded.implementing_type, trait_or_interface = excluded.trait_or_interface, line = excluded.line, kind = excluded.kind",
+            params![id, file, language, implementing_type, trait_or_interface, line, kind],
+        )?;
+        Ok(())
+    }
+
+    /// Insert or update one dependency-injection binding fact.
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_di_binding(
+        &self,
+        id: &str,
+        file: &str,
+        language: &str,
+        abstract_type: &str,
+        concrete_type: &str,
+        lifetime: Option<&str>,
+        line: usize,
+        framework: &str,
+    ) -> Result<()> {
+        let line = i64::try_from(line).context("DI binding line exceeds SQLite INTEGER range")?;
+        self.conn.execute(
+            "INSERT INTO di_bindings (id, file, language, abstract_type, concrete_type, lifetime, line, framework) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) ON CONFLICT(id) DO UPDATE SET file = excluded.file, language = excluded.language, abstract_type = excluded.abstract_type, concrete_type = excluded.concrete_type, lifetime = excluded.lifetime, line = excluded.line, framework = excluded.framework",
+            params![id, file, language, abstract_type, concrete_type, lifetime, line, framework],
+        )?;
+        Ok(())
+    }
+
     /// Insert or replace parser backend provenance for a file.
     pub fn insert_parser_result(
         &self,
@@ -285,10 +400,7 @@ impl SqliteStore {
                     .get("kind")
                     .and_then(|value| value.as_str())
                     .context("parser fact is missing kind")?;
-                let data = fact
-                    .get("data")
-                    .cloned()
-                    .unwrap_or(serde_json::Value::Null);
+                let data = fact.get("data").cloned().unwrap_or(serde_json::Value::Null);
                 let data_json = serde_json::to_string(&data)?;
                 self.insert_parser_fact(id, file, kind, &data_json)?;
             }
@@ -402,7 +514,7 @@ impl SqliteStore {
 
     // ── Delete methods ─────────────────────────────────────────────
 
-    /// Delete all indexed code and parser data for a given file path.
+    /// Delete all indexed code, semantic facts, and parser data for a file path.
     pub fn delete_file_data(&self, path: &str) -> Result<()> {
         self.conn
             .execute("DELETE FROM symbols WHERE file = ?1", params![path])?;
@@ -410,6 +522,12 @@ impl SqliteStore {
             .execute("DELETE FROM imports WHERE file = ?1", params![path])?;
         self.conn
             .execute("DELETE FROM calls WHERE file = ?1", params![path])?;
+        self.conn
+            .execute("DELETE FROM routes WHERE file = ?1", params![path])?;
+        self.conn
+            .execute("DELETE FROM type_impls WHERE file = ?1", params![path])?;
+        self.conn
+            .execute("DELETE FROM di_bindings WHERE file = ?1", params![path])?;
         self.conn
             .execute("DELETE FROM parser_facts WHERE file = ?1", params![path])?;
         self.conn
@@ -500,7 +618,10 @@ impl SqliteStore {
     ///
     /// User input wildcards (`%` and `_`) are escaped to prevent pattern injection.
     pub fn search_symbols(&self, query: &str) -> Result<Vec<SymbolRecord>> {
-        let escaped = query.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        let escaped = query
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
         let pattern = format!("%{}%", escaped);
         let mut stmt = self.conn.prepare(
             "SELECT id, file, language, kind, name, exported, line_start, line_end, visibility, signature, is_test, usage_count FROM symbols WHERE name LIKE ?1 ESCAPE '\\' ORDER BY name, file",
@@ -577,6 +698,134 @@ impl SqliteStore {
         let mut result = Vec::new();
         for row in rows {
             result.push(row?);
+        }
+        Ok(result)
+    }
+
+    /// Return all route facts registered for an exact route path.
+    ///
+    /// Results are ordered by registration file, line, and identifier.
+    pub fn get_routes_by_path(&self, path: &str) -> Result<Vec<RouteRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, file, language, method, path, handler, handler_file, line, framework, middleware FROM routes WHERE path = ?1 ORDER BY file, line, id",
+        )?;
+        let rows = stmt.query_map(params![path], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, i64>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, Option<String>>(9)?,
+            ))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            let (
+                id,
+                file,
+                language,
+                method,
+                path,
+                handler,
+                handler_file,
+                line,
+                framework,
+                middleware_json,
+            ) = row?;
+            let middleware_json = middleware_json.unwrap_or_else(|| "[]".to_owned());
+            let middleware: Vec<String> = serde_json::from_str(&middleware_json)
+                .with_context(|| format!("failed to decode route middleware for {id}"))?;
+            result.push(RouteRecord {
+                id,
+                file,
+                language,
+                method,
+                path,
+                handler,
+                handler_file,
+                line: usize::try_from(line).context("route line is negative")?,
+                framework,
+                middleware,
+            });
+        }
+        Ok(result)
+    }
+
+    /// Return all type implementation facts for an exact trait or interface.
+    ///
+    /// Results are ordered by implementation file, line, and identifier.
+    pub fn get_type_impls_by_trait(&self, trait_or_interface: &str) -> Result<Vec<TypeImplRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, file, language, implementing_type, trait_or_interface, line, kind FROM type_impls WHERE trait_or_interface = ?1 ORDER BY file, line, id",
+        )?;
+        let rows = stmt.query_map(params![trait_or_interface], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, String>(6)?,
+            ))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            let (id, file, language, implementing_type, trait_or_interface, line, kind) = row?;
+            result.push(TypeImplRecord {
+                id,
+                file,
+                language,
+                implementing_type,
+                trait_or_interface,
+                line: usize::try_from(line).context("type implementation line is negative")?,
+                kind,
+            });
+        }
+        Ok(result)
+    }
+
+    /// Return all DI bindings for an exact abstract type or interface.
+    ///
+    /// Results are ordered by registration file, line, and identifier.
+    pub fn get_di_bindings_by_abstract_type(
+        &self,
+        abstract_type: &str,
+    ) -> Result<Vec<DIBindingRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, file, language, abstract_type, concrete_type, lifetime, line, framework FROM di_bindings WHERE abstract_type = ?1 ORDER BY file, line, id",
+        )?;
+        let rows = stmt.query_map(params![abstract_type], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, i64>(6)?,
+                row.get::<_, String>(7)?,
+            ))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            let (id, file, language, abstract_type, concrete_type, lifetime, line, framework) =
+                row?;
+            result.push(DIBindingRecord {
+                id,
+                file,
+                language,
+                abstract_type,
+                concrete_type,
+                lifetime,
+                line: usize::try_from(line).context("DI binding line is negative")?,
+                framework,
+            });
         }
         Ok(result)
     }
@@ -926,10 +1175,7 @@ mod tests {
         });
 
         store.insert_parser_result_value(&result).unwrap();
-        let provenance = store
-            .get_parser_result("src/view.tsx")
-            .unwrap()
-            .unwrap();
+        let provenance = store.get_parser_result("src/view.tsx").unwrap().unwrap();
         assert_eq!(provenance.used_backend, "ripex");
         assert_eq!(provenance.diagnostics_json, "[]");
 
@@ -939,10 +1185,7 @@ mod tests {
         assert_eq!(data["name"], "view");
 
         store.delete_file_data("src/view.tsx").unwrap();
-        assert!(store
-            .get_parser_result("src/view.tsx")
-            .unwrap()
-            .is_none());
+        assert!(store.get_parser_result("src/view.tsx").unwrap().is_none());
         assert!(store
             .get_parser_facts_by_file("src/view.tsx")
             .unwrap()

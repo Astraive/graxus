@@ -79,7 +79,13 @@ pub fn extract_decorators(source: &str, file_path: &str, language: &str) -> Vec<
                     // Extract attribute name
                     let inner = &trimmed[1..trimmed.find(']').unwrap_or(trimmed.len())];
                     let name = inner.split('(').next().unwrap_or(inner).trim().to_string();
-                    if !name.is_empty() && name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                    if !name.is_empty()
+                        && name
+                            .chars()
+                            .next()
+                            .map(|c| c.is_uppercase())
+                            .unwrap_or(false)
+                    {
                         // Look ahead for the definition line
                         let target = find_next_definition(source, line_idx);
                         facts.push(DecoratorFact {
@@ -118,10 +124,23 @@ pub fn extract_decorators(source: &str, file_path: &str, language: &str) -> Vec<
 
 fn extract_name_from_definition(line: &str) -> Option<String> {
     // "fn goodbye" / "def goodbye" / "function goodbye" / "class Foo" / "async def goodbye"
-    let keywords = ["fn ", "def ", "function ", "class ", "async def ", "export function ", "export default function ", "export class ", "const ", "let ", "var "];
+    let keywords = [
+        "fn ",
+        "def ",
+        "function ",
+        "class ",
+        "async def ",
+        "export function ",
+        "export default function ",
+        "export class ",
+        "const ",
+        "let ",
+        "var ",
+    ];
     for kw in &keywords {
         if let Some(rest) = line.strip_prefix(kw) {
-            let name = rest.split(|c: char| c.is_whitespace() || c == '(' || c == '{' || c == ':')
+            let name = rest
+                .split(|c: char| c.is_whitespace() || c == '(' || c == '{' || c == ':')
                 .next()
                 .unwrap_or(rest);
             if !name.is_empty() {
@@ -135,7 +154,11 @@ fn extract_name_from_definition(line: &str) -> Option<String> {
 fn find_next_definition(source: &str, after_line: usize) -> Option<String> {
     for line in source.lines().skip(after_line + 1).take(5) {
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with("//") || trimmed.starts_with('[') {
+        if trimmed.is_empty()
+            || trimmed.starts_with('#')
+            || trimmed.starts_with("//")
+            || trimmed.starts_with('[')
+        {
             continue;
         }
         return extract_name_from_definition(trimmed);

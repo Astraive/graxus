@@ -166,7 +166,11 @@ fn update_is_idempotent_and_preserves_call_rows() {
     };
 
     let after_index = symbol_count();
-    assert!(after_index >= 2, "expected >=2 symbols, got {}", after_index);
+    assert!(
+        after_index >= 2,
+        "expected >=2 symbols, got {}",
+        after_index
+    );
 
     // Modify the source so an incremental update has real work to do.
     fs::write(
@@ -187,7 +191,11 @@ pub fn helper_fn() -> i32 {
     // First incremental update: should detect 1 modified file and snapshot.
     let upd1 = run(&["--root", root_arg, "update"]);
     assert!(upd1.contains("modified"), "update #1: {}", upd1);
-    assert!(upd1.contains("Snapshot saved"), "update #1 snapshot: {}", upd1);
+    assert!(
+        upd1.contains("Snapshot saved"),
+        "update #1 snapshot: {}",
+        upd1
+    );
 
     let after_update_1 = symbol_count();
     assert_eq!(
@@ -322,16 +330,40 @@ fn replace_include_and_lang_filters_scope_the_edit() {
 
     // --include scopes to a single file.
     let out = run(&[
-        "--root", root_arg, "replace", "needle", "x", "--preview", "--include", "src/main.rs",
+        "--root",
+        root_arg,
+        "replace",
+        "needle",
+        "x",
+        "--preview",
+        "--include",
+        "src/main.rs",
     ]);
     assert!(out.contains("Include:     src/main.rs"), "{}", out);
-    assert!(out.contains("Files affected: 1"), "include should limit to 1 file: {}", out);
+    assert!(
+        out.contains("Files affected: 1"),
+        "include should limit to 1 file: {}",
+        out
+    );
 
     // --lang rust excludes the markdown doc.
-    let out = run(&["--root", root_arg, "replace", "needle", "x", "--preview", "--lang", "rust"]);
+    let out = run(&[
+        "--root",
+        root_arg,
+        "replace",
+        "needle",
+        "x",
+        "--preview",
+        "--lang",
+        "rust",
+    ]);
     assert!(out.contains("Languages:   rust"), "{}", out);
     // 2 rust files, not 3 (docs/readme.md excluded).
-    assert!(out.contains("Files affected: 2"), "lang should exclude .md: {}", out);
+    assert!(
+        out.contains("Files affected: 2"),
+        "lang should exclude .md: {}",
+        out
+    );
 }
 
 #[test]
@@ -351,7 +383,16 @@ fn replace_max_files_aborts_before_mutating() {
 
     // Invoke directly so we can observe the non-zero exit status.
     let output = Command::new(bin())
-        .args(["--root", root_arg, "replace", "target", "replaced", "--apply", "--max-files", "1"])
+        .args([
+            "--root",
+            root_arg,
+            "replace",
+            "target",
+            "replaced",
+            "--apply",
+            "--max-files",
+            "1",
+        ])
         .output()
         .expect("spawn");
     assert!(
@@ -454,14 +495,23 @@ fn dead_code_limit_and_confidence_filters() {
     // --min-confidence 80 suppresses the 75-tier exported candidate but keeps
     // the 90-tier private ones.
     let strict = run(&[
-        "--root", root_arg, "dead-code", "--include-exported", "--min-confidence", "80",
+        "--root",
+        root_arg,
+        "dead-code",
+        "--include-exported",
+        "--min-confidence",
+        "80",
     ]);
     assert!(
         !strict.contains("exported_unused"),
         "min-confidence 80 should suppress exported candidate: {}",
         strict
     );
-    assert!(strict.contains("da"), "private candidates are 90%: {}", strict);
+    assert!(
+        strict.contains("da"),
+        "private candidates are 90%: {}",
+        strict
+    );
 }
 
 #[test]
@@ -516,9 +566,12 @@ fn regex_context_lines_around_match() {
 
     let out = run(&["--root", root_arg, "regex", "MATCH", "--context-lines", "1"]);
     // The match line carries the '>' marker; the two adjacent lines do not.
-    assert!(out.contains(">"), "match line should be marked with ' >': {}", out);
+    assert!(
+        out.contains(">"),
+        "match line should be marked with ' >': {}",
+        out
+    );
     assert!(out.contains("MATCH"), "match should appear: {}", out);
     assert!(out.contains("line one"), "context before: {}", out);
     assert!(out.contains("line three"), "context after: {}", out);
 }
-
