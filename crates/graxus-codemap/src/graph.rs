@@ -12,7 +12,7 @@ pub struct CallGraph {
     callees: HashMap<String, Vec<String>>,
 }
 
-/// Make a canonical symbol key from file + name.
+/// Make a canonical symbol key from file + name in "file::name" format.
 fn symbol_key(file: &str, name: &str) -> String {
     format!("{}::{}", file, name)
 }
@@ -41,8 +41,14 @@ impl CallGraph {
                 let caller_key = call.caller_symbol.as_deref().map(|s| s.to_string());
 
                 if let Some(ref caller) = caller_key {
-                    callees.entry(caller.clone()).or_default().push(callee_key.clone());
-                    callers.entry(callee_key.clone()).or_default().push(caller.clone());
+                    callees
+                        .entry(caller.clone())
+                        .or_default()
+                        .push(callee_key.clone());
+                    callers
+                        .entry(callee_key.clone())
+                        .or_default()
+                        .push(caller.clone());
                 }
             } else {
                 // Try to resolve by callee_text
@@ -51,7 +57,10 @@ impl CallGraph {
                         let callee_key = symbol_key(&sym.file, &sym.name);
                         let caller_key = call.caller_symbol.as_deref().map(|s| s.to_string());
                         if let Some(ref caller) = caller_key {
-                            callees.entry(caller.clone()).or_default().push(callee_key.clone());
+                            callees
+                                .entry(caller.clone())
+                                .or_default()
+                                .push(callee_key.clone());
                             callers.entry(callee_key).or_default().push(caller.clone());
                         }
                     }
@@ -74,12 +83,18 @@ impl CallGraph {
 
     /// Get who calls this symbol.
     pub fn callers_of(&self, symbol: &str) -> Vec<&str> {
-        self.callers.get(symbol).map(|v| v.iter().map(|s| s.as_str()).collect()).unwrap_or_default()
+        self.callers
+            .get(symbol)
+            .map(|v| v.iter().map(|s| s.as_str()).collect())
+            .unwrap_or_default()
     }
 
     /// Get what this symbol calls.
     pub fn callees_of(&self, symbol: &str) -> Vec<&str> {
-        self.callees.get(symbol).map(|v| v.iter().map(|s| s.as_str()).collect()).unwrap_or_default()
+        self.callees
+            .get(symbol)
+            .map(|v| v.iter().map(|s| s.as_str()).collect())
+            .unwrap_or_default()
     }
 
     /// BFS upward: who calls this symbol transitively.
@@ -177,7 +192,7 @@ impl CallGraph {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CallKind, ConfidenceScore, Visibility, SymbolKind, CallFact, SymbolFact};
+    use crate::{CallFact, CallKind, ConfidenceScore, SymbolFact, SymbolKind, Visibility};
 
     fn make_call(file: &str, caller: &str, callee: &str, resolved: &str) -> CallFact {
         CallFact {
@@ -209,17 +224,20 @@ mod tests {
             signature: String::new(),
             is_test: false,
             usage_count: 0,
+            ..Default::default()
         }
     }
 
     #[test]
     fn test_callers_of() {
-        let graph = CodeGraph { files: vec![],
+        let graph = CodeGraph {
+            files: vec![],
             symbols: vec![make_symbol("a.rs", "foo"), make_symbol("b.rs", "bar")],
             imports: vec![],
             calls: vec![make_call("b.rs", "b.rs::bar", "foo", "a.rs::foo")],
             edges: vec![],
             type_hints: vec![],
+            ..Default::default()
         };
         let cg = CallGraph::from_code_graph(&graph);
         let callers = cg.callers_of("a.rs::foo");
@@ -235,6 +253,7 @@ mod tests {
             calls: vec![make_call("a.rs", "a.rs::foo", "bar", "b.rs::bar")],
             edges: vec![],
             type_hints: vec![],
+            ..Default::default()
         };
         let cg = CallGraph::from_code_graph(&graph);
         let callees = cg.callees_of("a.rs::foo");
@@ -257,6 +276,7 @@ mod tests {
             ],
             edges: vec![],
             type_hints: vec![],
+            ..Default::default()
         };
         let cg = CallGraph::from_code_graph(&graph);
         let callers = cg.transitive_callers("x.rs::a", 5);
@@ -281,6 +301,7 @@ mod tests {
             ],
             edges: vec![],
             type_hints: vec![],
+            ..Default::default()
         };
         let cg = CallGraph::from_code_graph(&graph);
         let radius = cg.blast_radius("x.rs::a", 5);
@@ -293,10 +314,7 @@ mod tests {
     fn test_cycles() {
         let graph = CodeGraph {
             files: vec![],
-            symbols: vec![
-                make_symbol("x.rs", "a"),
-                make_symbol("x.rs", "b"),
-            ],
+            symbols: vec![make_symbol("x.rs", "a"), make_symbol("x.rs", "b")],
             imports: vec![],
             calls: vec![
                 make_call("x.rs", "x.rs::a", "b", "x.rs::b"),
@@ -304,6 +322,7 @@ mod tests {
             ],
             edges: vec![],
             type_hints: vec![],
+            ..Default::default()
         };
         let cg = CallGraph::from_code_graph(&graph);
         let cycles = cg.cycles();

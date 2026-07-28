@@ -1,12 +1,39 @@
 //! HTML template for D3.js force-directed graph visualization.
+//!
+//! Renders a [`D3Graph`] as a standalone HTML file with an interactive
+//! force-directed layout powered by D3.js v7. The template includes
+//! search, zoom, drag, and a detail panel.
 
 use crate::D3Graph;
 
-/// Generate a standalone HTML file with an interactive D3.js graph.
-pub fn render_html(graph: &D3Graph) -> String {
-    let data_json = serde_json::to_string(graph).unwrap_or_default();
+/// Escape the five HTML-sensitive characters for safe interpolation into HTML.
+///
+/// Converts `&` to `&amp;`, `<` to `&lt;`, `>` to `&gt;`, `"` to `&quot;`,
+/// and `'` to `&#x27;`.
+pub fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;")
+}
 
-    format!(r##"<!DOCTYPE html>
+/// Generate a standalone HTML file with an interactive D3.js graph.
+///
+/// The graph is sanitized before rendering to enforce size limits and strip
+/// HTML from node IDs and edge types. All user-provided content (title,
+/// description, node labels, file paths, details) is escaped for safe HTML
+/// rendering — both server-side (Rust) for the header and client-side
+/// (JavaScript) for the detail panel.
+pub fn render_html(graph: &D3Graph) -> String {
+    // Sanitize a clone so the caller's graph is not mutated
+    let mut graph = graph.clone();
+    graph.sanitize();
+
+    let data_json = serde_json::to_string(&graph).unwrap_or_default();
+
+    format!(
+        r##"<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -55,6 +82,16 @@ pub fn render_html(graph: &D3Graph) -> String {
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script>
 const data = {data_json};
+
+function escapeHtml(s) {{
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}}
 
 function nodeColor(type) {{
   const colors = {{
@@ -138,11 +175,11 @@ function showDetail(d) {{
   detail.style.display = "block";
   const typeColor = nodeColor(d.node_type);
   detail.innerHTML = `
-    <h2>${{d.label}}</h2>
-    <span class="type" style="background:${{typeColor}}22;color:${{typeColor}}">${{d.node_type}}</span>
-    ${{d.file ? `<div class="label">File</div><div class="value">${{d.file}}</div>` : ''}}
-    ${{d.line ? `<div class="label">Line</div><div class="value">${{d.line}}</div>` : ''}}
-    ${{d.details ? `<div class="label">Details</div><div class="value">${{d.details}}</div>` : ''}}
+    <h2>${{escapeHtml(d.label)}}</h2>
+    <span class="type" style="background:${{typeColor}}22;color:${{typeColor}}">${{escapeHtml(d.node_type)}}</span>
+    ${{d.file ? `<div class="label">File</div><div class="value">${{escapeHtml(d.file)}}</div>` : ''}}
+    ${{d.line ? `<div class="label">Line</div><div class="value">${{escapeHtml(String(d.line))}}</div>` : ''}}
+    ${{d.details ? `<div class="label">Details</div><div class="value">${{escapeHtml(d.details)}}</div>` : ''}}
     <div class="label">Connections</div>
     <div class="value">${{data.links.filter(l => l.source.id === d.id || l.target.id === d.id).length}} edges</div>
   `;
@@ -164,13 +201,60 @@ document.getElementById("search").addEventListener("input", (e) => {{
     )
 }
 
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{D3Graph, D3Link, D3Node};
+
+    fn sample_node(id: &str, label: &str, node_type: &str) -> D3Node {
+        D3Node {
+            id: id.into(),
+            label: label.into(),
+            node_type: node_type.into(),
+            file: None,
+            line: None,
+            details: None,
+        }
+    }
+
+    fn sample_link(source: &str, target: &str, edge_type: &str) -> D3Link {
+        D3Link {
+            source: source.into(),
+            target: target.into(),
+            edge_type: edge_type.into(),
+            label: None,
+        }
+    }
+
+    // ── html_escape ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_html_escape_script_tag() {
+        assert_eq!(
+            html_escape("<script>alert('xss')</script>"),
+            "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;"
+        );
+    }
+
+    #[test]
+    fn test_html_escape_all_special_chars() {
+        assert_eq!(
+            html_escape(r#"a & b <c> d "e" f'g"#),
+            "a &amp; b &lt;c&gt; d &quot;e&quot; f&#x27;g"
+        );
+    }
+
+    #[test]
+    fn test_html_escape_empty() {
+        assert_eq!(html_escape(""), "");
+    }
+
+    #[test]
+    fn test_html_escape_no_special() {
+        assert_eq!(html_escape("goodbye world"), "goodbye world");
+    }
+
+    // ── render_html basic ───────────────────────────────────────────
 
     #[test]
     fn test_render_html_basic() {
@@ -183,22 +267,241 @@ mod tests {
     }
 
     #[test]
-    fn test_render_html_with_data() {
-        let mut graph = D3Graph::new("Test", "desc");
-        graph.nodes.push(crate::D3Node {
-            id: "n1".into(), label: "Node 1".into(), node_type: "function".into(),
-            file: None, line: None, details: None,
-        });
-        graph.links.push(crate::D3Link {
-            source: "n1".into(), target: "n1".into(), edge_type: "test".into(), label: None,
-        });
+    fn test_render_html_empty_graph() {
+        let graph = D3Graph::new("Empty", "No nodes or links");
         let html = render_html(&graph);
-        assert!(html.contains("Node 1"));
-        assert!(html.contains("1 nodes, 1 links"));
+        assert!(html.contains("<!DOCTYPE html>"));
+        assert!(html.contains("Empty"));
+        assert!(html.contains(r#""nodes":[]"#));
+        assert!(html.contains(r#""links":[]"#));
     }
 
     #[test]
-    fn test_html_escape() {
-        assert_eq!(html_escape("<script>alert('xss')</script>"), "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;");
+    fn test_render_html_with_data() {
+        let mut graph = D3Graph::new("Test", "desc");
+        graph.nodes.push(D3Node {
+            id: "n1".into(),
+            label: "Node 1".into(),
+            node_type: "function".into(),
+            file: None,
+            line: None,
+            details: None,
+        });
+        graph.links.push(D3Link {
+            source: "n1".into(),
+            target: "n1".into(),
+            edge_type: "test".into(),
+            label: None,
+        });
+        let html = render_html(&graph);
+        assert!(html.contains("Node 1"));
+        assert!(html.contains("data.nodes.length"));
+        assert!(html.contains("data.links.length"));
+    }
+
+    // ── Unicode content ─────────────────────────────────────────────
+
+    #[test]
+    fn test_render_html_unicode_title() {
+        let graph = D3Graph::new("Code Analysis — 日本語分析", "Ünïcödé dëscrîptîön 🚀");
+        let html = render_html(&graph);
+        assert!(html.contains("Code Analysis"));
+        assert!(html.contains("日本語分析"));
+        assert!(html.contains("Ünïcödé"));
+        assert!(html.contains("🚀"));
+    }
+
+    #[test]
+    fn test_render_html_unicode_node_labels() {
+        let mut graph = D3Graph::new("T", "D");
+        graph
+            .nodes
+            .push(sample_node("n1", "données_françaises", "function"));
+        graph.nodes.push(sample_node("n2", "中文符号", "struct"));
+        graph.nodes.push(sample_node("n3", "العربية", "doc"));
+        let html = render_html(&graph);
+        assert!(html.contains("données_françaises"));
+        assert!(html.contains("中文符号"));
+        assert!(html.contains("العربية"));
+    }
+
+    // ── XSS prevention in template ──────────────────────────────────
+
+    #[test]
+    fn test_xss_prevention_title() {
+        let graph = D3Graph::new("<script>alert('xss')</script>", "safe");
+        let html = render_html(&graph);
+        // The title in the header should be escaped
+        assert!(html.contains("&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;"));
+        // Should NOT contain raw script tag in the header HTML (outside the JSON data)
+        // Split at the script tag where JSON data begins
+        let header_section = html.split("const data").next().unwrap();
+        assert!(!header_section.contains("<script>alert"));
+    }
+
+    #[test]
+    fn test_xss_prevention_description() {
+        let graph = D3Graph::new("T", r#"<img src=x onerror="alert(1)">"#);
+        let html = render_html(&graph);
+        let header_section = html.split("const data").next().unwrap();
+        // The < and > must be escaped so the browser won't parse it as an HTML tag
+        assert!(header_section.contains("&lt;img"));
+        assert!(!header_section.contains("<img "));
+    }
+
+    #[test]
+    fn test_xss_prevention_node_label_in_detail_panel() {
+        let mut graph = D3Graph::new("T", "D");
+        graph.nodes.push(D3Node {
+            id: "n1".into(),
+            label: r#"<img src=x onerror="alert(1)">"#.into(),
+            node_type: "function".into(),
+            file: None,
+            line: None,
+            details: None,
+        });
+        let html = render_html(&graph);
+        // The showDetail function should use escapeHtml for labels
+        assert!(html.contains("escapeHtml(d.label)"));
+        assert!(html.contains("escapeHtml(d.node_type)"));
+    }
+
+    #[test]
+    fn test_xss_prevention_file_path_in_detail_panel() {
+        let mut graph = D3Graph::new("T", "D");
+        graph.nodes.push(D3Node {
+            id: "n1".into(),
+            label: "Node".into(),
+            node_type: "function".into(),
+            file: Some(r#"C:\Users\<script>alert(1)</script>\file.rs"#.into()),
+            line: None,
+            details: None,
+        });
+        let html = render_html(&graph);
+        // showDetail should escape file paths
+        assert!(html.contains("escapeHtml(d.file)"));
+    }
+
+    #[test]
+    fn test_xss_prevention_details_in_detail_panel() {
+        let mut graph = D3Graph::new("T", "D");
+        graph.nodes.push(D3Node {
+            id: "n1".into(),
+            label: "Node".into(),
+            node_type: "function".into(),
+            file: None,
+            line: None,
+            details: Some(r#"Details with <b>HTML</b> and 'quotes'"#.into()),
+        });
+        let html = render_html(&graph);
+        // showDetail should escape details
+        assert!(html.contains("escapeHtml(d.details)"));
+    }
+
+    #[test]
+    fn test_xss_prevention_escapehtml_function_present() {
+        let graph = D3Graph::new("T", "D");
+        let html = render_html(&graph);
+        // Verify the JavaScript escapeHtml function exists
+        assert!(html.contains("function escapeHtml(s)"));
+        assert!(html.contains(".replace(/&/g, '&amp;')"));
+        assert!(html.contains(".replace(/</g, '&lt;')"));
+    }
+
+    #[test]
+    fn test_xss_prevention_node_type_escaped() {
+        let graph = D3Graph::new("T", "D");
+        let html = render_html(&graph);
+        // node_type in the detail panel should be escaped
+        assert!(html.contains("escapeHtml(d.node_type)"));
+    }
+
+    // ── Large graph ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_render_html_large_graph() {
+        let mut graph = D3Graph::new("Large", "100+ nodes");
+        for i in 0..150 {
+            graph.nodes.push(sample_node(
+                &format!("n{}", i),
+                &format!("Node {}", i),
+                "function",
+            ));
+        }
+        for i in 0..149 {
+            graph.links.push(sample_link(
+                &format!("n{}", i),
+                &format!("n{}", i + 1),
+                "calls",
+            ));
+        }
+        let html = render_html(&graph);
+        // The node/link counts are rendered client-side via JS; verify the JSON data has them
+        assert!(html.contains(r#""nodes":["#));
+        assert!(html.contains(r#""links":["#));
+        // Verify all 150 node IDs are present in the JSON
+        assert!(html.contains(r#""id":"n0""#));
+        assert!(html.contains(r#""id":"n149""#));
+    }
+
+    #[test]
+    fn test_render_html_sanitizes_before_render() {
+        let mut graph = D3Graph::new("T", "D");
+        graph.nodes.push(D3Node {
+            id: "<bad>".into(),
+            label: "x".into(),
+            node_type: "function".into(),
+            file: None,
+            line: None,
+            details: None,
+        });
+        let html = render_html(&graph);
+        // The sanitized ID should appear in the JSON data (no angle brackets)
+        assert!(!html.contains(r#""id":"<bad>""#));
+        assert!(html.contains(r#""id":"bad""#));
+    }
+
+    // ── Graph with all node types ───────────────────────────────────
+
+    #[test]
+    fn test_render_html_all_node_types() {
+        // These types are explicitly mapped in the nodeColor JS function
+        let mapped_types = [
+            "function",
+            "method",
+            "class",
+            "struct",
+            "interface",
+            "trait",
+            "module",
+            "file",
+            "doc",
+            "tag",
+            "constant",
+            "type",
+            "enum",
+            "caller",
+            "target",
+            "symbol",
+            "import",
+        ];
+        let mut graph = D3Graph::new("Types", "All node types");
+        for (i, t) in mapped_types.iter().enumerate() {
+            graph.nodes.push(sample_node(&format!("n{}", i), t, t));
+        }
+        // "other" type falls through to the default color
+        graph.nodes.push(sample_node("n_other", "misc", "other"));
+
+        let html = render_html(&graph);
+        // Every explicitly mapped type should appear as a key in the nodeColor map
+        for t in &mapped_types {
+            assert!(
+                html.contains(&format!("'{}'", t)),
+                "nodeColor missing type '{}'",
+                t
+            );
+        }
+        // "other" is handled by the default fallback in nodeColor
+        assert!(html.contains("'other'") || html.contains("|| '#e6edf3'"));
     }
 }

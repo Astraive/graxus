@@ -1,0 +1,34 @@
+//! Subcommand implementations for the graxus CLI.
+
+pub mod clean;
+pub mod codemap;
+pub mod completions;
+pub mod config_cmd;
+pub mod context;
+pub mod deadcode;
+pub mod deps_cmd;
+pub mod diff;
+pub mod doctor;
+pub mod embed;
+pub mod find;
+pub mod generate;
+pub mod graph;
+pub mod history;
+pub mod hotspots;
+pub mod impact;
+pub mod index;
+pub mod init;
+pub mod plugins_cmd;
+pub mod regex_search;
+pub mod replace;
+pub mod routes;
+pub mod rollback;
+pub mod search;
+pub mod serve;
+pub mod symbols;
+pub mod status;
+pub mod types;
+pub mod update;
+pub mod visualize;
+pub mod watch;
+pub mod workspaces;

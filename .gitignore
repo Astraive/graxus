@@ -4,3 +4,10 @@ target/
 .idea/
 .claude/
 .claude-logs/
+
+# Sensitive files
+.env
+.env.*
+*.pem
+*.key
+secrets.env

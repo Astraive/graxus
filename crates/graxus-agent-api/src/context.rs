@@ -38,32 +38,43 @@ pub struct AgentContext {
 
 // ── Token Budget ──────────────────────────────────────────────────────────
 
-/// Estimate tokens for a string (rough: chars / 4).
+/// Estimate tokens for a string.
+///
+/// Uses character count (not byte length) to handle multi-byte UTF-8 correctly.
+/// Approximation: ~4 characters per token for English text.
 pub fn estimate_tokens(text: &str) -> usize {
-    (text.len() + 3) / 4
+    text.chars().count().div_ceil(4)
 }
 
 /// Priority score for a context item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Priority {
-    Import,   // related via import
-    Bridge,   // connected via bridge
-    Fuzzy,    // fuzzy/substring match
-    Prefix,   // prefix match
-    Exact,    // exact name match (highest)
+    Import, // related via import
+    Bridge, // connected via bridge
+    Fuzzy,  // fuzzy/substring match
+    Prefix, // prefix match
+    Exact,  // exact name match (highest)
 }
 
 /// Token budget for bounded context queries.
+///
+/// Tracks remaining token capacity as items are added. Use [`consume`](Self::consume)
+/// to attempt adding items within the budget.
 pub struct ContextBudget {
     pub max_tokens: usize,
     pub used_tokens: usize,
 }
 
 impl ContextBudget {
+    /// Create a new budget with the given maximum token limit.
     pub fn new(max_tokens: usize) -> Self {
-        Self { max_tokens, used_tokens: 0 }
+        Self {
+            max_tokens,
+            used_tokens: 0,
+        }
     }
 
+    /// Return the number of tokens still available.
     pub fn remaining(&self) -> usize {
         self.max_tokens.saturating_sub(self.used_tokens)
     }
@@ -96,11 +107,7 @@ pub struct ContextEngine {
 
 impl ContextEngine {
     /// Create a new context engine from doc graph, code graph, and bridge edges.
-    pub fn new(
-        doc_graph: DocGraph,
-        code_graph: CodeGraph,
-        bridge: Vec<BridgeEdge>,
-    ) -> Self {
+    pub fn new(doc_graph: DocGraph, code_graph: CodeGraph, bridge: Vec<BridgeEdge>) -> Self {
         Self {
             doc_graph,
             code_graph,
@@ -109,10 +116,7 @@ impl ContextEngine {
     }
 
     /// Build a context engine by automatically constructing the bridge.
-    pub fn build(
-        doc_graph: DocGraph,
-        code_graph: CodeGraph,
-    ) -> anyhow::Result<Self> {
+    pub fn build(doc_graph: DocGraph, code_graph: CodeGraph) -> anyhow::Result<Self> {
         let bridge = BridgeBuilder::build(&doc_graph, &code_graph)?;
         Ok(Self::new(doc_graph, code_graph, bridge))
     }
@@ -134,7 +138,10 @@ impl ContextEngine {
         // Search docs by title, tags, and path
         for node in &self.doc_graph.nodes {
             if node.title.to_lowercase().contains(&query_lower)
-                || node.tags.iter().any(|t| t.to_lowercase().contains(&query_lower))
+                || node
+                    .tags
+                    .iter()
+                    .any(|t| t.to_lowercase().contains(&query_lower))
                 || node.path.to_lowercase().contains(&query_lower)
             {
                 context.docs.push(node.clone());
@@ -165,11 +172,7 @@ impl ContextEngine {
         }
 
         // Collect imports and calls for matched symbols
-        let matched_files: Vec<&str> = context
-            .code
-            .iter()
-            .map(|s| s.file.as_str())
-            .collect();
+        let matched_files: Vec<&str> = context.code.iter().map(|s| s.file.as_str()).collect();
 
         for import in &self.code_graph.imports {
             if matched_files.contains(&import.file.as_str()) {
@@ -203,13 +206,28 @@ impl ContextEngine {
         };
 
         // Symbols defined in this file
-        context.code = self.code_graph.symbols_in_file(path).into_iter().cloned().collect();
+        context.code = self
+            .code_graph
+            .symbols_in_file(path)
+            .into_iter()
+            .cloned()
+            .collect();
 
         // Imports in this file
-        context.imports = self.code_graph.imports_in_file(path).into_iter().cloned().collect();
+        context.imports = self
+            .code_graph
+            .imports_in_file(path)
+            .into_iter()
+            .cloned()
+            .collect();
 
         // Calls in this file
-        context.calls = self.code_graph.calls_in_file(path).into_iter().cloned().collect();
+        context.calls = self
+            .code_graph
+            .calls_in_file(path)
+            .into_iter()
+            .cloned()
+            .collect();
 
         // Docs that describe this file
         let doc_edges = BridgeBuilder::docs_for_code(&self.bridge, path);
@@ -270,9 +288,7 @@ impl ContextEngine {
 
         // Find all call facts mentioning this symbol name
         for call in &self.code_graph.calls {
-            if call.callee_text == name
-                && !context.calls.iter().any(|c| c.id == call.id)
-            {
+            if call.callee_text == name && !context.calls.iter().any(|c| c.id == call.id) {
                 context.calls.push(call.clone());
                 context.related_files.push(call.file.clone());
             }
@@ -323,7 +339,10 @@ impl ContextEngine {
         // Find docs matching the topic
         for node in &self.doc_graph.nodes {
             let matches_title = node.title.to_lowercase().contains(&topic_lower);
-            let matches_tag = node.tags.iter().any(|t| t.to_lowercase().contains(&topic_lower));
+            let matches_tag = node
+                .tags
+                .iter()
+                .any(|t| t.to_lowercase().contains(&topic_lower));
             let matches_heading = node
                 .headings
                 .iter()
@@ -378,39 +397,41 @@ impl ContextEngine {
     }
 
     /// Budget-aware query: scores all matches by priority, fills budget highest-priority first.
+    ///
+    /// Scores items by matching strength, then fills the token budget from
+    /// highest-priority down. Items are cloned only once, directly into the
+    /// final context — no intermediate allocations for rejected items.
     pub fn query_bounded(&self, query: &str, mut budget: ContextBudget) -> AgentContext {
         let query_lower = query.to_lowercase();
 
-        let mut scored_docs: Vec<ScoredItem<DocNode>> = Vec::new();
-        let mut scored_code: Vec<ScoredItem<SymbolFact>> = Vec::new();
-        let mut scored_files: Vec<ScoredItem<String>> = Vec::new();
-        let _scored_imports: Vec<ScoredItem<ImportFact>> = Vec::new();
-        let _scored_calls: Vec<ScoredItem<CallFact>> = Vec::new();
-        let mut scored_bridges: Vec<ScoredItem<BridgeEdge>> = Vec::new();
-        let mut warnings = Vec::new();
+        // Scored indices: (kind, source_index, priority, estimated_tokens)
+        // kind: 0=doc, 1=code, 2=file, 3=bridge
+        let mut scored: Vec<(u8, usize, Priority, usize)> = Vec::new();
 
         // Score docs
-        for node in &self.doc_graph.nodes {
+        for (i, node) in self.doc_graph.nodes.iter().enumerate() {
             let title_lower = node.title.to_lowercase();
             let priority = if title_lower == query_lower {
                 Priority::Exact
             } else if title_lower.starts_with(&query_lower) {
                 Priority::Prefix
             } else if title_lower.contains(&query_lower)
-                || node.tags.iter().any(|t| t.to_lowercase().contains(&query_lower))
+                || node
+                    .tags
+                    .iter()
+                    .any(|t| t.to_lowercase().contains(&query_lower))
+                || node.path.to_lowercase().contains(&query_lower)
             {
-                Priority::Fuzzy
-            } else if node.path.to_lowercase().contains(&query_lower) {
                 Priority::Fuzzy
             } else {
                 continue;
             };
             let tokens = estimate_tokens(&node.title) + node.tags.len() * 5;
-            scored_docs.push(ScoredItem { item: node.clone(), priority, tokens });
+            scored.push((0, i, priority, tokens));
         }
 
         // Score code symbols
-        for symbol in &self.code_graph.symbols {
+        for (i, symbol) in self.code_graph.symbols.iter().enumerate() {
             let name_lower = symbol.name.to_lowercase();
             let priority = if name_lower == query_lower {
                 Priority::Exact
@@ -422,38 +443,30 @@ impl ContextEngine {
                 continue;
             };
             let tokens = estimate_tokens(&symbol.name) + estimate_tokens(&symbol.file) + 20;
-            scored_code.push(ScoredItem { item: symbol.clone(), priority, tokens });
+            scored.push((1, i, priority, tokens));
         }
 
         // Score files
-        for file in &self.code_graph.files {
+        for (i, file) in self.code_graph.files.iter().enumerate() {
             if file.path.to_lowercase().contains(&query_lower) {
                 let tokens = estimate_tokens(&file.path) + 10;
-                scored_files.push(ScoredItem {
-                    item: file.path.clone(), priority: Priority::Fuzzy, tokens,
-                });
+                scored.push((2, i, Priority::Fuzzy, tokens));
             }
         }
 
         // Score bridge edges
-        for edge in &self.bridge {
+        for (i, edge) in self.bridge.iter().enumerate() {
             if edge.from.to_lowercase().contains(&query_lower)
                 || edge.to.to_lowercase().contains(&query_lower)
             {
                 let tokens = estimate_tokens(&edge.from) + estimate_tokens(&edge.to) + 10;
-                scored_bridges.push(ScoredItem {
-                    item: edge.clone(), priority: Priority::Bridge, tokens,
-                });
+                scored.push((3, i, Priority::Bridge, tokens));
             }
         }
 
-        // Sort all by priority (highest first)
-        scored_docs.sort_by(|a, b| b.priority.cmp(&a.priority));
-        scored_code.sort_by(|a, b| b.priority.cmp(&a.priority));
-        scored_files.sort_by(|a, b| b.priority.cmp(&a.priority));
-        scored_bridges.sort_by(|a, b| b.priority.cmp(&a.priority));
+        // Sort by priority (highest first), then by token cost (cheapest first) as tiebreaker
+        scored.sort_by(|a, b| b.2.cmp(&a.2).then(a.3.cmp(&b.3)));
 
-        // Interleave items by priority, filling budget
         let mut context = AgentContext {
             query: query.to_string(),
             docs: Vec::new(),
@@ -465,39 +478,22 @@ impl ContextEngine {
             warnings: Vec::new(),
         };
 
-        // Flatten all scored items into a single priority-sorted stream
-        let mut all_scored: Vec<(&str, Priority, usize)> = Vec::new(); // (kind, priority, index)
-        for (i, s) in scored_docs.iter().enumerate() { all_scored.push(("doc", s.priority, i)); }
-        for (i, s) in scored_code.iter().enumerate() { all_scored.push(("code", s.priority, i)); }
-        for (i, s) in scored_files.iter().enumerate() { all_scored.push(("file", s.priority, i)); }
-        for (i, s) in scored_bridges.iter().enumerate() { all_scored.push(("bridge", s.priority, i)); }
-        all_scored.sort_by(|a, b| b.1.cmp(&a.1));
-
-        for (kind, _priority, idx) in all_scored {
+        // Fill budget — clone only items that fit
+        for (kind, idx, _priority, tokens) in scored {
             match kind {
-                "doc" => {
-                    let item = &scored_docs[idx];
-                    if budget.consume(item.tokens) {
-                        context.docs.push(item.item.clone());
-                    }
+                0 if budget.consume(tokens) => {
+                    context.docs.push(self.doc_graph.nodes[idx].clone());
                 }
-                "code" => {
-                    let item = &scored_code[idx];
-                    if budget.consume(item.tokens) {
-                        context.code.push(item.item.clone());
-                    }
+                1 if budget.consume(tokens) => {
+                    context.code.push(self.code_graph.symbols[idx].clone());
                 }
-                "file" => {
-                    let item = &scored_files[idx];
-                    if budget.consume(item.tokens) {
-                        context.related_files.push(item.item.clone());
-                    }
+                2 if budget.consume(tokens) => {
+                    context
+                        .related_files
+                        .push(self.code_graph.files[idx].path.clone());
                 }
-                "bridge" => {
-                    let item = &scored_bridges[idx];
-                    if budget.consume(item.tokens) {
-                        context.bridge_edges.push(item.item.clone());
-                    }
+                3 if budget.consume(tokens) => {
+                    context.bridge_edges.push(self.bridge[idx].clone());
                 }
                 _ => {}
             }
@@ -526,9 +522,10 @@ impl ContextEngine {
         context.related_files.dedup();
 
         if budget.remaining() == 0 {
-            warnings.push("Context truncated due to token budget".to_string());
+            context
+                .warnings
+                .push("Context truncated due to token budget".to_string());
         }
-        context.warnings = warnings;
 
         context
     }
@@ -541,7 +538,7 @@ mod tests {
     #[test]
     fn test_estimate_tokens() {
         assert_eq!(estimate_tokens(""), 0);
-        assert_eq!(estimate_tokens("hello"), 2);  // 5 chars / 4 rounded up
+        assert_eq!(estimate_tokens("goodbye"), 2); // 5 chars / 4 rounded up
         assert_eq!(estimate_tokens("a".repeat(100).as_str()), 25);
     }
 
@@ -569,9 +566,21 @@ mod tests {
     #[test]
     fn test_scored_item_sort() {
         let mut items = vec![
-            ScoredItem { item: "a", priority: Priority::Fuzzy, tokens: 10 },
-            ScoredItem { item: "b", priority: Priority::Exact, tokens: 10 },
-            ScoredItem { item: "c", priority: Priority::Bridge, tokens: 10 },
+            ScoredItem {
+                item: "a",
+                priority: Priority::Fuzzy,
+                tokens: 10,
+            },
+            ScoredItem {
+                item: "b",
+                priority: Priority::Exact,
+                tokens: 10,
+            },
+            ScoredItem {
+                item: "c",
+                priority: Priority::Bridge,
+                tokens: 10,
+            },
         ];
         items.sort_by(|a, b| b.priority.cmp(&a.priority));
         assert_eq!(items[0].item, "b"); // Exact first

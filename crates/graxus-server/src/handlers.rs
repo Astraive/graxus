@@ -4,6 +4,9 @@ use serde_json::json;
 use crate::rpc::{RpcRequest, RpcResponse};
 use crate::state::ServerState;
 
+/// Maximum length for any string parameter in RPC requests.
+const MAX_PARAM_LENGTH: usize = 4096;
+
 /// Dispatch an RPC request to the appropriate handler.
 pub async fn handle_request(state: &mut ServerState, request: RpcRequest) -> RpcResponse {
     match request.method.as_str() {
@@ -19,6 +22,7 @@ pub async fn handle_request(state: &mut ServerState, request: RpcRequest) -> Rpc
 
         "update" => handle_update(state, request.id),
 
+        "check_file" => handle_check_file(state, request.params, request.id),
         _ => RpcResponse::error(request.id, -32601, "Method not found"),
     }
 }
@@ -46,10 +50,18 @@ fn handle_context(
     params: Option<serde_json::Value>,
     id: Option<serde_json::Value>,
 ) -> RpcResponse {
-    let query = match params.as_ref().and_then(|p| p.get("query")).and_then(|q| q.as_str()) {
+    let query = match params
+        .as_ref()
+        .and_then(|p| p.get("query"))
+        .and_then(|q| q.as_str())
+    {
         Some(q) => q,
         None => return RpcResponse::error(id, -32602, "Missing 'query' param"),
     };
+
+    if query.len() > MAX_PARAM_LENGTH {
+        return RpcResponse::error(id, -32602, "Parameter 'query' too long");
+    }
 
     match build_context_engine(state) {
         Some(engine) => {
@@ -59,7 +71,11 @@ fn handle_context(
                 Err(e) => RpcResponse::error(id, -32603, &format!("Serialization error: {}", e)),
             }
         }
-        None => RpcResponse::error(id, -32000, "No indexed data available. Run `graxus index` first."),
+        None => RpcResponse::error(
+            id,
+            -32000,
+            "No indexed data available. Run `graxus index` first.",
+        ),
     }
 }
 
@@ -68,10 +84,18 @@ fn handle_file_context(
     params: Option<serde_json::Value>,
     id: Option<serde_json::Value>,
 ) -> RpcResponse {
-    let file = match params.as_ref().and_then(|p| p.get("file")).and_then(|q| q.as_str()) {
+    let file = match params
+        .as_ref()
+        .and_then(|p| p.get("file"))
+        .and_then(|q| q.as_str())
+    {
         Some(f) => f,
         None => return RpcResponse::error(id, -32602, "Missing 'file' param"),
     };
+
+    if file.len() > MAX_PARAM_LENGTH {
+        return RpcResponse::error(id, -32602, "Parameter 'file' too long");
+    }
 
     match build_context_engine(state) {
         Some(engine) => {
@@ -81,7 +105,11 @@ fn handle_file_context(
                 Err(e) => RpcResponse::error(id, -32603, &format!("Serialization error: {}", e)),
             }
         }
-        None => RpcResponse::error(id, -32000, "No indexed data available. Run `graxus index` first."),
+        None => RpcResponse::error(
+            id,
+            -32000,
+            "No indexed data available. Run `graxus index` first.",
+        ),
     }
 }
 
@@ -90,10 +118,18 @@ fn handle_symbol_context(
     params: Option<serde_json::Value>,
     id: Option<serde_json::Value>,
 ) -> RpcResponse {
-    let symbol = match params.as_ref().and_then(|p| p.get("symbol")).and_then(|q| q.as_str()) {
+    let symbol = match params
+        .as_ref()
+        .and_then(|p| p.get("symbol"))
+        .and_then(|q| q.as_str())
+    {
         Some(s) => s,
         None => return RpcResponse::error(id, -32602, "Missing 'symbol' param"),
     };
+
+    if symbol.len() > MAX_PARAM_LENGTH {
+        return RpcResponse::error(id, -32602, "Parameter 'symbol' too long");
+    }
 
     match build_context_engine(state) {
         Some(engine) => {
@@ -103,7 +139,11 @@ fn handle_symbol_context(
                 Err(e) => RpcResponse::error(id, -32603, &format!("Serialization error: {}", e)),
             }
         }
-        None => RpcResponse::error(id, -32000, "No indexed data available. Run `graxus index` first."),
+        None => RpcResponse::error(
+            id,
+            -32000,
+            "No indexed data available. Run `graxus index` first.",
+        ),
     }
 }
 
@@ -124,5 +164,39 @@ fn handle_update(state: &mut ServerState, id: Option<serde_json::Value>) -> RpcR
 fn build_context_engine(state: &ServerState) -> Option<ContextEngine> {
     let doc_graph = state.doc_graph.clone()?;
     let code_graph = state.code_graph.clone()?;
-    Some(ContextEngine::build(doc_graph, code_graph).ok()?)
+    ContextEngine::build(doc_graph, code_graph).ok()
+}
+fn handle_check_file(
+    state: &ServerState,
+    params: Option<serde_json::Value>,
+    id: Option<serde_json::Value>,
+) -> RpcResponse {
+    let file = match params
+        .as_ref()
+        .and_then(|p| p.get("file"))
+        .and_then(|q| q.as_str())
+    {
+        Some(f) => f,
+        None => return RpcResponse::error(id, -32602, "Missing 'file' param"),
+    };
+
+    if file.len() > MAX_PARAM_LENGTH {
+        return RpcResponse::error(id, -32602, "Parameter 'file' too long");
+    }
+
+    let file_path = state.root.join(file);
+    #[cfg(feature = "ripex")]
+    {
+        match graxus_codemap::ripex_bridge::run_compiler_check(&file_path, false) {
+            Ok(report) => match serde_json::to_value(&report) {
+                Ok(v) => RpcResponse::success(id, v),
+                Err(e) => RpcResponse::error(id, -32603, &format!("Serialization error: {}", e)),
+            },
+            Err(e) => RpcResponse::error(id, -32603, &format!("Compiler check error: {}", e)),
+        }
+    }
+    #[cfg(not(feature = "ripex"))]
+    {
+        RpcResponse::error(id, -32000, "ripex feature disabled")
+    }
 }

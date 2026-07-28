@@ -1,0 +1,8 @@
+{
+  "name": "count-symbols",
+  "version": "0.1.0",
+  "description": "Reference plugin: counts symbols in the project's codemap",
+  "plugin_type": "Extractor",
+  "entry_point": "count-symbols",
+  "min_graxus_version": "0.4.0"
+}

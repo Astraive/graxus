@@ -6,7 +6,7 @@ members = [
     "crates/graxus-codemap",
     "crates/graxus-index",
     "crates/graxus-edit",
-    "crates/graxus-cli",
+    "cli",
     "crates/graxus-agent-api",
     "crates/graxus-embed",
     "crates/graxus-llm",
@@ -15,7 +15,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.4.0"
 edition = "2021"
 license = "MIT"
 
@@ -39,10 +39,23 @@ tree-sitter-javascript = "0.23"
 tree-sitter-rust = "0.24"
 tree-sitter-go = "0.23"
 tree-sitter-python = "0.23"
+tree-sitter-c = "0.24"
+tree-sitter-cpp = "0.23"
+tree-sitter-c-sharp = "0.23"
+tree-sitter-java = "0.23"
+tree-sitter-kotlin-ng = "1"
+tree-sitter-swift = "0.7"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 colored = "3"
 tabled = "0.19"
 globset = "0.4"
 notify = "6"
-
+criterion = { version = "0.5", features = ["html_reports"] }
+ctrlc = "3"
+tempfile = "3"
+semver = "1"
+subtle = "2"
+indicatif = "0.17"
+clap_complete = "4"
+ripex = { path = "../ripex", default-features = false, features = ["serde", "lang-all"] }

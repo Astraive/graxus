@@ -99,19 +99,22 @@ mod tests {
 
     #[test]
     fn test_docs_dir() {
-        let root = Path::new("/project");
-        assert_eq!(docs_dir(root), PathBuf::from("/project/.graxus/docs"));
+        let dir = tempdir().unwrap();
+        let expected = dir.path().join(".graxus").join("docs");
+        assert_eq!(docs_dir(dir.path()), expected);
     }
 
     #[test]
     fn test_code_dir() {
-        let root = Path::new("/project");
-        assert_eq!(code_dir(root), PathBuf::from("/project/.graxus/code"));
+        let dir = tempdir().unwrap();
+        let expected = dir.path().join(".graxus").join("code");
+        assert_eq!(code_dir(dir.path()), expected);
     }
 
     #[test]
     fn test_snapshots_dir() {
-        let root = Path::new("/project");
-        assert_eq!(snapshots_dir(root), PathBuf::from("/project/.graxus/snapshots"));
+        let dir = tempdir().unwrap();
+        let expected = dir.path().join(".graxus").join("snapshots");
+        assert_eq!(snapshots_dir(dir.path()), expected);
     }
 }

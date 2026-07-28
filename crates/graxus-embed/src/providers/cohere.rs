@@ -4,6 +4,10 @@ use serde::Deserialize;
 
 use crate::provider::EmbeddingProvider;
 
+/// Embedding provider backed by the Cohere `/v1/embed` API.
+///
+/// Defaults to the `embed-english-v3.0` model (1024 dimensions) when no
+/// model is specified.
 pub struct CohereProvider {
     client: reqwest::Client,
     api_key: String,
@@ -12,6 +16,9 @@ pub struct CohereProvider {
 }
 
 impl CohereProvider {
+    /// Create a new Cohere provider.
+    ///
+    /// If `model` is `None`, defaults to `"embed-english-v3.0"`.
     pub fn new(api_key: String, model: Option<String>) -> Self {
         let model = model.unwrap_or_else(|| "embed-english-v3.0".to_string());
         Self {

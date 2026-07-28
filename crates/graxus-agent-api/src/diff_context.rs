@@ -57,7 +57,11 @@ pub fn affected_callers(symbols: &[String], code_graph: &CodeGraph) -> Vec<Strin
         // Check if this call resolves to one of our affected symbols
         if let Some(ref resolved) = call.resolved_symbol {
             // resolved is "symbol:file:name" format, extract the name
-            if let Some(name) = resolved.split("::").last().or_else(|| resolved.split(':').last()) {
+            if let Some(name) = resolved
+                .split("::")
+                .last()
+                .or_else(|| resolved.split(':').next_back())
+            {
                 if symbols.iter().any(|s| s == name) {
                     let caller = call
                         .caller_symbol
@@ -95,7 +99,7 @@ pub fn affected_docs(
     // Check bridge edges
     for edge in bridge {
         let matches_file = files.iter().any(|f| edge.to == *f || edge.from == *f);
-        let matches_symbol = symbols.iter().any(|s| edge.to == *s);
+        let matches_symbol = symbols.contains(&edge.to);
         if matches_file || matches_symbol {
             // Add the doc side of the edge
             if !docs.contains(&edge.from) {
@@ -112,10 +116,14 @@ pub fn affected_docs(
             .unwrap_or_default();
         if !file_stem.is_empty() {
             for node in &doc_graph.nodes {
-                if node.path.contains(&file_stem) || node.title.to_lowercase().contains(&file_stem.to_lowercase()) {
-                    if !docs.contains(&node.id) {
-                        docs.push(node.id.clone());
-                    }
+                if (node.path.contains(&file_stem)
+                    || node
+                        .title
+                        .to_lowercase()
+                        .contains(&file_stem.to_lowercase()))
+                    && !docs.contains(&node.id)
+                {
+                    docs.push(node.id.clone());
                 }
             }
         }
@@ -130,7 +138,11 @@ pub fn affected_imports(files: &[String], code_graph: &CodeGraph) -> Vec<String>
     for import in &code_graph.imports {
         if let Some(ref resolved) = import.resolved_file {
             if files.contains(resolved) {
-                let entry = format!("{}:{}", import.file, import.local_name.as_deref().unwrap_or(&import.source));
+                let entry = format!(
+                    "{}:{}",
+                    import.file,
+                    import.local_name.as_deref().unwrap_or(&import.source)
+                );
                 if !imports.contains(&entry) {
                     imports.push(entry);
                 }
@@ -173,7 +185,7 @@ pub fn build_diff_context(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use graxus_codemap::{ConfidenceScore, ResolutionMethod};
+    use graxus_codemap::ResolutionMethod;
 
     #[test]
     fn test_parse_diff_paths() {
@@ -183,14 +195,18 @@ index abc123..def456 100644
 +++ b/src/main.rs
 @@ -1,3 +1,4 @@
  fn main() {
-+    println!("hello");
++    println!("goodbye");
  }
 diff --git a/src/lib.rs b/src/lib.rs
 --- a/src/lib.rs
 +++ b/src/lib.rs
 "#;
         let paths = parse_diff_paths(diff);
-        assert!(paths.len() >= 2, "Expected at least 2 paths, got {}", paths.len());
+        assert!(
+            paths.len() >= 2,
+            "Expected at least 2 paths, got {}",
+            paths.len()
+        );
         assert!(paths.contains(&"src/main.rs".to_string()));
         assert!(paths.contains(&"src/lib.rs".to_string()));
     }
@@ -224,6 +240,7 @@ diff --git a/src/lib.rs b/src/lib.rs
                     signature: "fn main()".into(),
                     is_test: false,
                     usage_count: 0,
+                    ..Default::default()
                 },
                 graxus_codemap::SymbolFact {
                     id: "sym2".into(),
@@ -238,12 +255,14 @@ diff --git a/src/lib.rs b/src/lib.rs
                     signature: "fn helper()".into(),
                     is_test: false,
                     usage_count: 0,
+                    ..Default::default()
                 },
             ],
             imports: vec![],
             calls: vec![],
             edges: vec![],
             type_hints: vec![],
+            ..Default::default()
         };
 
         let files = vec!["src/main.rs".to_string()];
@@ -269,10 +288,14 @@ diff --git a/src/lib.rs b/src/lib.rs
                 resolved_symbol: Some("symbol:src/main.rs:main".into()),
                 line: 42,
                 column: 8,
-                confidence: graxus_codemap::ConfidenceScore::new(85.0, ResolutionMethod::PathMatchOnly),
+                confidence: graxus_codemap::ConfidenceScore::new(
+                    85.0,
+                    ResolutionMethod::PathMatchOnly,
+                ),
             }],
             edges: vec![],
             type_hints: vec![],
+            ..Default::default()
         };
 
         let symbols = vec!["main".to_string()];
@@ -298,10 +321,14 @@ diff --git a/src/lib.rs b/src/lib.rs
                 resolved_symbol: None,
                 line: 10,
                 column: 5,
-                confidence: graxus_codemap::ConfidenceScore::new(40.0, ResolutionMethod::FuzzySymbolMatch),
+                confidence: graxus_codemap::ConfidenceScore::new(
+                    40.0,
+                    ResolutionMethod::FuzzySymbolMatch,
+                ),
             }],
             edges: vec![],
             type_hints: vec![],
+            ..Default::default()
         };
 
         let symbols = vec!["process_data".to_string()];
@@ -325,11 +352,15 @@ diff --git a/src/lib.rs b/src/lib.rs
                 imported_name: None,
                 resolved_file: Some("src/lib.rs".into()),
                 line: 1,
-                confidence: graxus_codemap::ConfidenceScore::new(85.0, ResolutionMethod::PathMatchOnly),
+                confidence: graxus_codemap::ConfidenceScore::new(
+                    85.0,
+                    ResolutionMethod::PathMatchOnly,
+                ),
             }],
             calls: vec![],
             edges: vec![],
             type_hints: vec![],
+            ..Default::default()
         };
 
         let files = vec!["src/lib.rs".to_string()];

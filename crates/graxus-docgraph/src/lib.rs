@@ -1,3 +1,13 @@
+//! # graxus-docgraph
+//!
+//! Builds a document graph from Obsidian-compatible markdown files.
+//!
+//! Extracts wiki links (`[[Note]]`, `[[Note|alias]]`), frontmatter metadata,
+//! inline tags (`#tag`, `#nested/tag`), and headings to produce a graph
+//! of documents, tags, and their relationships.
+//!
+//! The graph is serialized to JSON files under `.graxus/docs/`.
+
 pub mod frontmatter;
 pub mod graph;
 pub mod markdown;

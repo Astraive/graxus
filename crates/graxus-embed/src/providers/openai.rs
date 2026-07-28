@@ -4,6 +4,10 @@ use serde::Deserialize;
 
 use crate::provider::EmbeddingProvider;
 
+/// Embedding provider backed by the OpenAI `/v1/embeddings` API.
+///
+/// Defaults to the `text-embedding-3-small` model (1536 dimensions) when no
+/// model is specified.
 pub struct OpenAIProvider {
     client: reqwest::Client,
     api_key: String,
@@ -12,6 +16,9 @@ pub struct OpenAIProvider {
 }
 
 impl OpenAIProvider {
+    /// Create a new OpenAI provider.
+    ///
+    /// If `model` is `None`, defaults to `"text-embedding-3-small"`.
     pub fn new(api_key: String, model: Option<String>) -> Self {
         let model = model.unwrap_or_else(|| "text-embedding-3-small".to_string());
         let dimensions = match model.as_str() {

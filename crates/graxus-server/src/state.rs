@@ -1,11 +1,11 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
+use graxus_agent_api::bridge::{BridgeBuilder, BridgeEdge};
+use graxus_codemap::CodeGraph;
 use graxus_core::config::GraxusConfig;
 use graxus_core::workspace;
-use graxus_codemap::CodeGraph;
 use graxus_docgraph::graph::DocGraph;
-use graxus_agent_api::bridge::{BridgeBuilder, BridgeEdge};
 
 /// Shared server state holding loaded graphs and indexes.
 pub struct ServerState {

@@ -27,6 +27,7 @@ pub fn resolve_imports(imports: &mut [ImportFact], file_nodes: &[FileNode]) {
             "typescript" | "javascript" => resolve_ts(&imp.source, &imp.file, &file_set, &by_stem),
             "python" => resolve_python(&imp.source, &imp.file, &file_set, &by_stem),
             "go" => resolve_go(&imp.source, &imp.file, &file_set, &by_stem),
+            "c" | "cpp" => resolve_c_cpp(&imp.source, &imp.file, &file_set, &by_stem),
             _ => None,
         };
 
@@ -57,7 +58,9 @@ fn resolve_rust(
     if let Some(rest) = path_str.strip_prefix("super::") {
         let file_dir = Path::new(file).parent().unwrap_or(Path::new("."));
         let segments: Vec<&str> = rest.split("::").collect();
-        if let Some(resolved) = resolve_rust_segments(&segments, &file_dir.to_string_lossy(), file_set) {
+        if let Some(resolved) =
+            resolve_rust_segments(&segments, &file_dir.to_string_lossy(), file_set)
+        {
             return Some((resolved, ConfidenceScore::named_import_exact()));
         }
     }
@@ -66,7 +69,9 @@ fn resolve_rust(
     if let Some(rest) = path_str.strip_prefix("self::") {
         let file_dir = Path::new(file).parent().unwrap_or(Path::new("."));
         let segments: Vec<&str> = rest.split("::").collect();
-        if let Some(resolved) = resolve_rust_segments(&segments, &file_dir.to_string_lossy(), file_set) {
+        if let Some(resolved) =
+            resolve_rust_segments(&segments, &file_dir.to_string_lossy(), file_set)
+        {
             return Some((resolved, ConfidenceScore::named_import_exact()));
         }
     }
@@ -108,7 +113,7 @@ fn resolve_rust_segments(
     }
 
     // Try module file: base/path/mod.rs
-    let candidate = format!("{}/mod.rs", format!("{}/{}", base, path));
+    let candidate = format!("{}/{}/mod.rs", base, path);
     if file_set.contains(candidate.as_str()) {
         return Some(normalize_path(&candidate));
     }
@@ -132,9 +137,23 @@ fn resolve_ts(
 ) -> Option<(String, ConfidenceScore)> {
     let src = source.trim().trim_matches('"').trim_matches('\'');
 
-    // Skip alias paths like @/...
-    if src.starts_with('@') {
-        return None;
+    // @/ alias → src/ prefix (common in Next.js, Vite, etc.)
+    if let Some(rest) = src.strip_prefix("@/") {
+        let ts_extensions = [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts"];
+        // Try src/rest with extensions
+        for ext in &ts_extensions {
+            let candidate = format!("src/{}{}", rest, ext);
+            if file_set.contains(candidate.as_str()) {
+                return Some((candidate, ConfidenceScore::named_import_exact()));
+            }
+        }
+        // Try src/rest/index with extensions
+        for ext in &ts_extensions {
+            let candidate = format!("src/{}/index{}", rest, ext);
+            if file_set.contains(candidate.as_str()) {
+                return Some((candidate, ConfidenceScore::named_import_exact()));
+            }
+        }
     }
 
     // Relative imports: ./foo or ../foo
@@ -163,7 +182,7 @@ fn resolve_ts(
     }
 
     // Absolute/bare module — try to find by stem
-    let stem = src.split('/').last().unwrap_or(src);
+    let stem = src.split('/').next_back().unwrap_or(src);
     let ts_extensions = [".ts", ".tsx", ".js", ".jsx"];
     for ext in &ts_extensions {
         let candidate = format!("{}.{}", stem, ext);
@@ -214,7 +233,11 @@ fn resolve_python(
         }
 
         // Try module/__init__.py
-        let candidate = normalize_path(&base.join(format!("{}/__init__.py", module)).to_string_lossy());
+        let candidate = normalize_path(
+            &base
+                .join(format!("{}/__init__.py", module))
+                .to_string_lossy(),
+        );
         if file_set.contains(candidate.as_str()) {
             return Some((candidate, ConfidenceScore::named_import_exact()));
         }
@@ -256,10 +279,15 @@ fn resolve_go(
         // Look for any .go file in that directory
         for f in file_set.iter() {
             let f_path = Path::new(f);
-            if f_path.parent().map(|p| normalize_path(&p.to_string_lossy()) == normalize_path(&dir.to_string_lossy())).unwrap_or(false) {
-                if f.ends_with(".go") {
-                    return Some((f.to_string(), ConfidenceScore::named_import_exact()));
-                }
+            if f_path
+                .parent()
+                .map(|p| {
+                    normalize_path(&p.to_string_lossy()) == normalize_path(&dir.to_string_lossy())
+                })
+                .unwrap_or(false)
+                && f.ends_with(".go")
+            {
+                return Some((f.to_string(), ConfidenceScore::named_import_exact()));
             }
         }
 
@@ -267,7 +295,7 @@ fn resolve_go(
     }
 
     // Module import: github.com/org/pkg → match by package name
-    if let Some(last) = src.split('/').last() {
+    if let Some(last) = src.split('/').next_back() {
         // Try to find a directory with that name containing .go files
         for f in file_set.iter() {
             if f.ends_with(".go") {
@@ -286,8 +314,81 @@ fn resolve_go(
     None
 }
 
+/// Resolve C/C++ `#include` directives.
+///
+/// Quote includes (`"foo.h"`, `"utils/parser.h"`) are project-local; angle-
+/// bracket includes (`<stdio.h>`, `<vector>`) are system/stdlib headers that
+/// are never part of the project and return `None`.
+///
+/// Resolution strategy: the include path (minus quotes) is matched against
+/// (a) the exact relative path in the file set, (b) the same path relative to
+/// the importing file's directory, and (c) by basename stem (e.g. `"parser.h"`
+/// matches `src/utils/parser.h`).
+fn resolve_c_cpp(
+    source: &str,
+    file: &str,
+    file_set: &HashSet<&str>,
+    by_stem: &HashMap<String, Vec<&str>>,
+) -> Option<(String, ConfidenceScore)> {
+    let raw = source.trim();
+
+    // Angle-bracket includes are system headers — never resolvable.
+    if raw.starts_with('<') && raw.ends_with('>') {
+        return None;
+    }
+
+    // Strip quotes: `"foo.h"` → `foo.h`.
+    let path_str = raw
+        .trim_start_matches('"')
+        .trim_end_matches('"')
+        .trim_start_matches('\'')
+        .trim_end_matches('\'');
+
+    if path_str.is_empty() || path_str.starts_with('<') {
+        return None;
+    }
+
+    let normalized = normalize_path(path_str);
+
+    // (a) Exact relative-path match.
+    if file_set.contains(normalized.as_str()) {
+        return Some((normalized, ConfidenceScore::named_import_exact()));
+    }
+
+    // (b) Relative to the importing file's directory.
+    let file_dir = Path::new(file).parent().unwrap_or(Path::new("."));
+    let relative = normalize_path(&file_dir.join(&normalized).to_string_lossy());
+    if file_set.contains(relative.as_str()) {
+        return Some((relative, ConfidenceScore::named_import_exact()));
+    }
+
+    // (c) Match by basename stem (e.g. include `"parser.h"` → `src/utils/parser.h`).
+    let stem = Path::new(&normalized)
+        .file_stem()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    if !stem.is_empty() {
+        if let Some(matches) = by_stem.get(&stem) {
+            // Prefer a match whose extension matches the include's extension.
+            let want_header = normalized.ends_with(".h")
+                || normalized.ends_with(".hpp")
+                || normalized.ends_with(".hxx");
+            for &candidate in matches {
+                let is_header = candidate.ends_with(".h")
+                    || candidate.ends_with(".hpp")
+                    || candidate.ends_with(".hxx");
+                if want_header == is_header {
+                    return Some((candidate.to_string(), ConfidenceScore::path_match_only()));
+                }
+            }
+            // Fall back to the first stem match regardless of extension.
+            return Some((matches[0].to_string(), ConfidenceScore::path_match_only()));
+        }
+    }
+
+    None
+}
+
 fn normalize_path(path: &str) -> String {
-    path.replace('\\', "/")
-        .replace("//", "/")
-        .to_string()
+    path.replace('\\', "/").replace("//", "/").to_string()
 }

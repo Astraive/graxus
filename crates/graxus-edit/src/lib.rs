@@ -13,12 +13,18 @@ pub use find::{SearchHit, SearchMode};
 pub use replace::{FileChange, ReplaceMode, ReplacePreview};
 
 /// High-level edit engine combining search, replace, and safety.
+///
+/// Wraps an [`IndexStore`] to provide safe find/replace operations with
+/// snapshot-based rollback.
 pub struct EditEngine {
     store: IndexStore,
     max_files: usize,
 }
 
 impl EditEngine {
+    /// Create a new engine backed by the given store.
+    ///
+    /// `max_files` caps the number of files processed per replace preview.
     pub fn new(store: IndexStore, max_files: usize) -> Self {
         Self { store, max_files }
     }
@@ -45,11 +51,7 @@ impl EditEngine {
     }
 
     /// Apply a replace operation with a snapshot for rollback.
-    pub fn apply_replace(
-        &self,
-        preview: &ReplacePreview,
-        label: &str,
-    ) -> Result<Snapshot> {
+    pub fn apply_replace(&self, preview: &ReplacePreview, label: &str) -> Result<Snapshot> {
         // Collect files to snapshot
         let files: Vec<std::path::PathBuf> = preview
             .affected_files

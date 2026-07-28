@@ -83,37 +83,86 @@ impl AgentExport {
         let doc_budget = max_tokens * 10 / 100;
 
         let mut sym_tok = 0usize;
-        let bounded_symbols: Vec<_> = self.code_graph.symbols.iter()
+        let bounded_symbols: Vec<_> = self
+            .code_graph
+            .symbols
+            .iter()
             .filter(|s| {
-                let t = estimate_tokens(&s.name) + estimate_tokens(&s.file) + 20;
-                if sym_tok + t <= sym_budget { sym_tok += t; true } else { false }
+                let parser_tokens = self
+                    .code_graph
+                    .parser_fact(&s.id)
+                    .and_then(|fact| serde_json::to_string(&fact.data).ok())
+                    .map_or(0, |raw| estimate_tokens(&raw));
+                let t =
+                    estimate_tokens(&s.name) + estimate_tokens(&s.file) + parser_tokens + 20;
+                if sym_tok + t <= sym_budget {
+                    sym_tok += t;
+                    true
+                } else {
+                    false
+                }
             })
             .cloned()
             .collect();
 
         let mut imp_tok = 0usize;
-        let bounded_imports: Vec<_> = self.code_graph.imports.iter()
+        let bounded_imports: Vec<_> = self
+            .code_graph
+            .imports
+            .iter()
             .filter(|i| {
-                let t = estimate_tokens(&i.source) + estimate_tokens(&i.file) + 10;
-                if imp_tok + t <= imp_budget { imp_tok += t; true } else { false }
+                let parser_tokens = self
+                    .code_graph
+                    .parser_fact(&i.id)
+                    .and_then(|fact| serde_json::to_string(&fact.data).ok())
+                    .map_or(0, |raw| estimate_tokens(&raw));
+                let t =
+                    estimate_tokens(&i.source) + estimate_tokens(&i.file) + parser_tokens + 10;
+                if imp_tok + t <= imp_budget {
+                    imp_tok += t;
+                    true
+                } else {
+                    false
+                }
             })
             .cloned()
             .collect();
 
         let mut call_tok = 0usize;
-        let bounded_calls: Vec<_> = self.code_graph.calls.iter()
+        let bounded_calls: Vec<_> = self
+            .code_graph
+            .calls
+            .iter()
             .filter(|c| {
-                let t = estimate_tokens(&c.callee_text) + estimate_tokens(&c.file) + 15;
-                if call_tok + t <= call_budget { call_tok += t; true } else { false }
+                let parser_tokens = self
+                    .code_graph
+                    .parser_fact(&c.id)
+                    .and_then(|fact| serde_json::to_string(&fact.data).ok())
+                    .map_or(0, |raw| estimate_tokens(&raw));
+                let t =
+                    estimate_tokens(&c.callee_text) + estimate_tokens(&c.file) + parser_tokens + 15;
+                if call_tok + t <= call_budget {
+                    call_tok += t;
+                    true
+                } else {
+                    false
+                }
             })
             .cloned()
             .collect();
 
         let mut bridge_tok = 0usize;
-        let bounded_bridge: Vec<_> = self.bridge.iter()
+        let bounded_bridge: Vec<_> = self
+            .bridge
+            .iter()
             .filter(|e| {
                 let t = estimate_tokens(&e.from) + estimate_tokens(&e.to) + 10;
-                if bridge_tok + t <= bridge_budget { bridge_tok += t; true } else { false }
+                if bridge_tok + t <= bridge_budget {
+                    bridge_tok += t;
+                    true
+                } else {
+                    false
+                }
             })
             .cloned()
             .collect();
@@ -121,13 +170,53 @@ impl AgentExport {
         // Docs: keep all nodes (usually few), but truncate node content is not needed
         // since DocNode is already compact
         let mut doc_tok = 0usize;
-        let bounded_docs: Vec<_> = self.doc_graph.nodes.iter()
+        let bounded_docs: Vec<_> = self
+            .doc_graph
+            .nodes
+            .iter()
             .filter(|d| {
                 let t = estimate_tokens(&d.title) + estimate_tokens(&d.path) + 20;
-                if doc_tok + t <= doc_budget { doc_tok += t; true } else { false }
+                if doc_tok + t <= doc_budget {
+                    doc_tok += t;
+                    true
+                } else {
+                    false
+                }
             })
             .cloned()
             .collect();
+
+        let retained_fact_ids = bounded_symbols
+            .iter()
+            .map(|fact| fact.id.clone())
+            .chain(bounded_imports.iter().map(|fact| fact.id.clone()))
+            .chain(bounded_calls.iter().map(|fact| fact.id.clone()))
+            .collect::<std::collections::HashSet<_>>();
+        let bounded_parser_results = self
+            .code_graph
+            .parser_results
+            .iter()
+            .cloned()
+            .map(|mut result| {
+                result
+                    .facts
+                    .retain(|fact| retained_fact_ids.contains(fact.id.as_str()));
+                result
+            })
+            .collect();
+        let mut bounded_code_graph = graxus_codemap::CodeGraph::from_parts(
+            self.code_graph.files.clone(),
+            bounded_symbols,
+            bounded_imports,
+            bounded_calls,
+            self.code_graph.routes.clone(),
+            self.code_graph.type_impls.clone(),
+            self.code_graph.di_bindings.clone(),
+            self.code_graph.edges.clone(),
+            self.code_graph.type_hints.clone(),
+            self.code_graph.variables.clone(),
+        );
+        bounded_code_graph.parser_results = bounded_parser_results;
 
         AgentExport {
             project_name: self.project_name.clone(),
@@ -135,14 +224,7 @@ impl AgentExport {
                 nodes: bounded_docs,
                 edges: self.doc_graph.edges.clone(),
             },
-            code_graph: graxus_codemap::CodeGraph {
-                files: self.code_graph.files.clone(),
-                symbols: bounded_symbols,
-                imports: bounded_imports,
-                calls: bounded_calls,
-                edges: self.code_graph.edges.clone(),
-                type_hints: self.code_graph.type_hints.clone(),
-            },
+            code_graph: bounded_code_graph,
             bridge: bounded_bridge,
             generated_at: self.generated_at.clone(),
         }
@@ -163,24 +245,25 @@ pub struct ExportStats {
 
 #[cfg(test)]
 mod tests {
-    use graxus_codemap::{ConfidenceScore, ResolutionMethod};
     use super::*;
-    use graxus_codemap::{FileNode, SymbolFact, SymbolKind, Visibility, ImportFact, ImportKind, CallFact, CallKind, Confidence};
+    use graxus_codemap::{
+        CallFact, CallKind, ConfidenceScore, FileNode, ImportFact, ImportKind, ResolutionMethod,
+        FileParserResult, ParserFact, ParserFactKind, SymbolFact, SymbolKind, Visibility,
+    };
+    use graxus_core::ParserBackend;
 
     fn make_export() -> AgentExport {
         let doc_graph = DocGraph {
-            nodes: vec![
-                graxus_docgraph::graph::DocNode {
-                    id: "doc:README".into(),
-                    node_type: graxus_docgraph::graph::DocNodeType::Document,
-                    path: "README.md".into(),
-                    title: "README".into(),
-                    tags: vec![],
-                    frontmatter: None,
-                    headings: vec![],
-                    wiki_links: vec![],
-                },
-            ],
+            nodes: vec![graxus_docgraph::graph::DocNode {
+                id: "doc:README".into(),
+                node_type: graxus_docgraph::graph::DocNodeType::Document,
+                path: "README.md".into(),
+                title: "README".into(),
+                tags: vec![],
+                frontmatter: None,
+                headings: vec![],
+                wiki_links: vec![],
+            }],
             edges: vec![],
         };
 
@@ -199,6 +282,7 @@ mod tests {
                 signature: format!("fn func_{}()", i),
                 is_test: false,
                 usage_count: 0,
+                ..Default::default()
             });
         }
 
@@ -235,8 +319,27 @@ mod tests {
                 column: 4,
                 confidence: ConfidenceScore::new(85.0, ResolutionMethod::PathMatchOnly),
             }],
+            routes: vec![],
+            type_impls: vec![],
+            di_bindings: vec![],
             edges: vec![],
             type_hints: vec![],
+            variables: vec![],
+            decorators: vec![],
+            macros: vec![],
+            parser_results: vec![FileParserResult {
+                file: "src/0.rs".into(),
+                requested_backend: ParserBackend::Ripex,
+                used_backend: ParserBackend::Ripex,
+                fallback_reason: None,
+                diagnostics: vec![],
+                facts: vec![ParserFact {
+                    id: "sym0".into(),
+                    kind: ParserFactKind::Symbol,
+                    data: serde_json::json!({"name": "func_0", "is_async": true}),
+                }],
+            }],
+            indexes: std::sync::OnceLock::new(),
         };
 
         AgentExport::new("test_project", doc_graph, code_graph, vec![])
@@ -259,6 +362,8 @@ mod tests {
         // With a huge budget, should keep everything
         let bounded = export.export_bounded(1_000_000);
         assert_eq!(bounded.code_graph.symbols.len(), 100);
+        assert_eq!(bounded.code_graph.parser_results.len(), 1);
+        assert_eq!(bounded.code_graph.parser_results[0].facts.len(), 1);
     }
 
     #[test]

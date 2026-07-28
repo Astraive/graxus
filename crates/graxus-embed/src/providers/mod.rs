@@ -1,3 +1,5 @@
+//! Concrete [`EmbeddingProvider`](crate::EmbeddingProvider) implementations.
+
 pub mod cohere;
 pub mod ollama;
 pub mod openai;

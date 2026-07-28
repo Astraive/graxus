@@ -20,6 +20,12 @@ pub fn resolve_calls(calls: &mut [CallFact], symbols: &[SymbolFact], imports: &[
         syms_by_name.entry(sym.name.as_str()).or_default().push(sym);
     }
 
+    // Build lookup: file -> list of symbols in that file
+    let mut syms_by_file: HashMap<&str, Vec<&SymbolFact>> = HashMap::new();
+    for sym in symbols {
+        syms_by_file.entry(sym.file.as_str()).or_default().push(sym);
+    }
+
     // Build lookup: local_name -> import (for resolving imported calls)
     let imports_by_local: HashMap<&str, &ImportFact> = imports
         .iter()
@@ -57,13 +63,39 @@ pub fn resolve_calls(calls: &mut [CallFact], symbols: &[SymbolFact], imports: &[
             }
         }
 
-        // 4. For method calls, try to resolve the object
-        if let Some(ref object) = call.object {
+        // 4. For method calls (obj.method()), try to resolve the object's type
+            if let Some(ref object) = call.object {
+            // Check if object is imported
             if let Some(imp) = imports_by_local.get(object.as_str()) {
                 if let Some(ref resolved_file) = imp.resolved_file {
+                    // Look for a method with this name in the resolved file
+                    if let Some(file_syms) = syms_by_file.get(resolved_file.as_str()) {
+                        if let Some(method) = file_syms.iter().find(|s| s.name == *callee) {
+                            call.resolved_symbol =
+                                Some(format!("{}::{}", method.file, method.name));
+                            call.confidence = ConfidenceScore::named_import_exact();
+                            continue;
+                        }
+                    }
+                    // Fall back to the resolved file
                     call.resolved_symbol = Some(format!("{}::{}", resolved_file, callee));
                     call.confidence = ConfidenceScore::named_import_exact();
                     continue;
+                }
+            }
+
+            // Check if object is a local variable with a known type
+            if let Some(local_syms) = syms_by_name.get(object.as_str()) {
+                if let Some(_var) = local_syms.iter().find(|s| s.file == call.file) {
+                    // Look for the type in the same file
+                    if let Some(file_syms) = syms_by_file.get(call.file.as_str()) {
+                        if let Some(method) = file_syms.iter().find(|s| s.name == *callee) {
+                            call.resolved_symbol =
+                                Some(format!("{}::{}", method.file, method.name));
+                            call.confidence = ConfidenceScore::local_definition();
+                            continue;
+                        }
+                    }
                 }
             }
         }

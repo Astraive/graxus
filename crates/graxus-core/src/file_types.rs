@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+/// High-level classification of a file (source code, documentation, config).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FileKind {
@@ -10,6 +11,7 @@ pub enum FileKind {
     Unknown,
 }
 
+/// Programming or markup language detected from file extension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Language {
@@ -18,6 +20,12 @@ pub enum Language {
     JavaScript,
     Go,
     Python,
+    C,
+    Cpp,
+    CSharp,
+    Java,
+    Kotlin,
+    Swift,
     Markdown,
     Html,
     Css,
@@ -29,6 +37,7 @@ pub enum Language {
 }
 
 impl Language {
+    /// Return the lowercase string name of this language.
     pub fn as_str(&self) -> &'static str {
         match self {
             Language::Rust => "rust",
@@ -36,6 +45,12 @@ impl Language {
             Language::JavaScript => "javascript",
             Language::Go => "go",
             Language::Python => "python",
+            Language::C => "c",
+            Language::Cpp => "cpp",
+            Language::CSharp => "csharp",
+            Language::Java => "java",
+            Language::Kotlin => "kotlin",
+            Language::Swift => "swift",
             Language::Markdown => "markdown",
             Language::Html => "html",
             Language::Css => "css",
@@ -63,6 +78,14 @@ pub fn detect_file(path: &Path) -> (FileKind, Language) {
         "jsx" => (FileKind::Code, Language::JavaScript),
         "go" => (FileKind::Code, Language::Go),
         "py" | "pyi" => (FileKind::Code, Language::Python),
+        "c" | "h" => (FileKind::Code, Language::C),
+        "cc" | "cp" | "cpp" | "cxx" | "hh" | "hpp" | "hxx" => {
+            (FileKind::Code, Language::Cpp)
+        }
+        "cs" => (FileKind::Code, Language::CSharp),
+        "java" => (FileKind::Code, Language::Java),
+        "kt" | "kts" => (FileKind::Code, Language::Kotlin),
+        "swift" => (FileKind::Code, Language::Swift),
         "md" | "mdx" => (FileKind::Doc, Language::Markdown),
         "txt" => (FileKind::Doc, Language::Unknown),
         "html" | "htm" => (FileKind::Code, Language::Html),
@@ -94,12 +117,49 @@ pub fn is_binary(path: &Path) -> bool {
         .to_lowercase();
     matches!(
         ext.as_str(),
-        "exe" | "dll" | "so" | "dylib" | "bin" | "o" | "a" | "lib"
-            | "png" | "jpg" | "jpeg" | "gif" | "bmp" | "ico" | "svg" | "webp"
-            | "mp3" | "mp4" | "wav" | "avi" | "mov" | "mkv" | "flv" | "webm"
-            | "zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar"
-            | "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx"
-            | "woff" | "woff2" | "ttf" | "otf" | "eot"
+        "exe"
+            | "dll"
+            | "so"
+            | "dylib"
+            | "bin"
+            | "o"
+            | "a"
+            | "lib"
+            | "png"
+            | "jpg"
+            | "jpeg"
+            | "gif"
+            | "bmp"
+            | "ico"
+            | "svg"
+            | "webp"
+            | "mp3"
+            | "mp4"
+            | "wav"
+            | "avi"
+            | "mov"
+            | "mkv"
+            | "flv"
+            | "webm"
+            | "zip"
+            | "tar"
+            | "gz"
+            | "bz2"
+            | "xz"
+            | "7z"
+            | "rar"
+            | "pdf"
+            | "doc"
+            | "docx"
+            | "xls"
+            | "xlsx"
+            | "ppt"
+            | "pptx"
+            | "woff"
+            | "woff2"
+            | "ttf"
+            | "otf"
+            | "eot"
     )
 }
 
@@ -120,6 +180,13 @@ mod tests {
     #[test]
     fn test_detect_markdown_file() {
         assert_eq!(detect_language(Path::new("README.md")), Language::Markdown);
+    }
+
+    #[test]
+    fn test_detect_c_family_files() {
+        assert_eq!(detect_language(Path::new("main.c")), Language::C);
+        assert_eq!(detect_language(Path::new("main.cpp")), Language::Cpp);
+        assert_eq!(detect_language(Path::new("service.cs")), Language::CSharp);
     }
 
     #[test]
@@ -178,6 +245,9 @@ mod tests {
         assert_eq!(Language::TypeScript.as_str(), "typescript");
         assert_eq!(Language::Go.as_str(), "go");
         assert_eq!(Language::Python.as_str(), "python");
+        assert_eq!(Language::C.as_str(), "c");
+        assert_eq!(Language::Cpp.as_str(), "cpp");
+        assert_eq!(Language::CSharp.as_str(), "csharp");
         assert_eq!(Language::Markdown.as_str(), "markdown");
     }
 }

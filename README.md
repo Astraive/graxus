@@ -19,7 +19,7 @@ Graxus builds a documentation graph for Markdown files and a codemap for source 
 ## Features
 
 - **Docs Graph** — Obsidian-compatible Markdown knowledge graph
-- **Code Codemap** — tree-sitter-powered source code analysis
+- **Code Codemap** — Ripex-first source analysis with per-file tree-sitter fallback
 - **Search** — Literal, regex, and symbol search
 - **Safe Edit** — Preview/replace with snapshot rollback
 - **Agent API** — Structured context for AI agents

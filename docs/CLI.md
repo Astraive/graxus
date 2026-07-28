@@ -32,12 +32,12 @@ graxus graph tags           # List all tags
 ### Code Codemap
 
 ```bash
-graxus codemap              # Print codemap summary
-graxus codemap --json       # Output full codemap as JSON
-graxus symbols              # List all symbols
-graxus symbols --file F     # Symbols in specific file
-graxus imports F            # Imports of a file
-graxus impacted F           # Files impacted by changes to F
+graxus codemap show           # Print codemap summary
+graxus codemap show --json    # Output full codemap as JSON
+graxus symbols                # List all symbols
+graxus symbols --file F       # Symbols in specific file
+graxus codemap imports F      # Imports of a file
+graxus codemap impacted F     # Files impacted by changes to F
 ```
 
 ### Search

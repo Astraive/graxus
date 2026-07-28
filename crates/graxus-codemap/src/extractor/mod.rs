@@ -1,2 +1,9 @@
-// Re-export types from crate root for backward compatibility.
-// All types are defined in lib.rs.
+//! Code extraction module.
+//!
+//! Provides extractors for different types of code facts across languages.
+
+pub mod calls;
+pub mod definitions;
+pub mod decorators;
+pub mod imports;
+pub mod macros;

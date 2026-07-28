@@ -28,13 +28,16 @@ Graxus must be safe because AI agents may use it to modify code.
 Before any replace operation:
 
 1. Collect affected files
-2. Copy originals to `.graxus/snapshots/{id}/`
+2. Copy originals to `.graxus/snapshots/{id}/` with a `meta.json` manifest
 3. Apply changes
 4. Snapshot metadata saved for rollback
 
 ```bash
-# Rollback
-graxus replace --rollback <snapshot-id>
+# List snapshots created by replace/update
+graxus history
+
+# Rollback a snapshot
+graxus rollback <snapshot-id> --apply
 ```
 
 ## Related Notes

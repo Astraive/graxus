@@ -1,0 +1,131 @@
+project:
+  name: graxus
+  root: .
+scan:
+  respect_gitignore: true
+  include:
+  - '**/*.md'
+  - '**/*.mdx'
+  - '**/*.txt'
+  - '**/*.rs'
+  - '**/*.ts'
+  - '**/*.tsx'
+  - '**/*.js'
+  - '**/*.jsx'
+  - '**/*.go'
+  - '**/*.py'
+  exclude:
+  - node_modules/**
+  - target/**
+  - dist/**
+  - build/**
+  - .git/**
+  - .graxus/**
+docs:
+  enabled: true
+  obsidian_compatible: true
+  extensions:
+  - .md
+  - .mdx
+  parse:
+    frontmatter: false
+    wiki_links: false
+    markdown_links: false
+    tags: false
+    headings: false
+    backlinks: false
+code:
+  enabled: true
+  parser: tree-sitter
+  languages:
+  - rust
+  - typescript
+  - javascript
+  - go
+  - python
+index:
+  storage: sqlite
+  path: .graxus/index.db
+edit:
+  create_snapshots: true
+  require_preview_for_replace: true
+  max_files_per_operation: 100
+embeddings:
+  enabled: false
+  provider: openai
+  model: text-embedding-3-small
+  api_key_env: ''
+  dimensions: 1536
+  batch_size: 64
+  endpoint: null
+llm:
+  enabled: false
+  provider: openai
+  model: gpt-4o-mini
+  api_key_env: ''
+  max_tokens: 4096
+  temperature: 0.3
+  max_cost_per_run: 1.0
+  endpoint: null
+defaults:
+  depth: 3
+  max_depth: 4
+  k: 25
+  max_files: 100
+  max_symbols: 500
+  max_notes: 30
+  max_nodes: 500
+  max_edges: 1000
+  min_confidence: 50.0
+  context_budget: 12000
+  max_chars_per_file: 8000
+context:
+  depth: 5
+  budget: null
+  k: null
+  max_files: null
+  max_symbols: null
+  max_notes: null
+  max_edges: null
+  max_calls: null
+  max_imports: null
+  max_chars_per_file: null
+  include_code: null
+  include_docs: null
+  include_graph: null
+  include_tests: null
+  min_confidence: null
+impact:
+  depth: null
+  max_files: null
+  max_symbols: null
+  max_notes: null
+  min_confidence: null
+  include_docs: null
+  include_tests: null
+search:
+  k: 30
+  max_results: null
+  min_score: null
+  hybrid: null
+  include_snippets: null
+graph:
+  depth: null
+  max_notes: null
+  max_nodes: null
+  max_edges: null
+  include_backlinks: null
+  include_orphans: null
+codemap:
+  depth: null
+  max_files: null
+  max_symbols: null
+  max_imports: null
+  max_calls: null
+  include_tests: null
+  min_confidence: null
+doctor:
+  min_import_resolution: null
+  min_call_resolution: null
+  max_parse_errors: null
+  max_broken_links: null

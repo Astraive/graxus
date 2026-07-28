@@ -1,8 +1,16 @@
+//! Anthropic Messages API provider.
+//!
+//! Supports Claude 3.5 Sonnet, Claude 3 Opus, and Claude 3 Haiku models.
+
 use anyhow::Context;
 use async_trait::async_trait;
 
 use crate::provider::{LlmProvider, LlmRequest, LlmResponse};
 
+/// LLM provider backed by the Anthropic Messages API.
+///
+/// Uses `https://api.anthropic.com/v1/messages` as the endpoint.
+/// Supports all Claude 3 family models.
 pub struct AnthropicProvider {
     client: reqwest::Client,
     api_key: String,
@@ -10,6 +18,12 @@ pub struct AnthropicProvider {
 }
 
 impl AnthropicProvider {
+    /// Create a new Anthropic provider with the given API key and model.
+    ///
+    /// # Arguments
+    ///
+    /// * `api_key` - Anthropic API key (should be loaded from environment, not hardcoded)
+    /// * `model` - Model identifier (e.g. "claude-3-5-sonnet-20241022")
     pub fn new(api_key: String, model: String) -> Self {
         Self {
             client: reqwest::Client::new(),
@@ -21,8 +35,14 @@ impl AnthropicProvider {
 
 #[async_trait]
 impl LlmProvider for AnthropicProvider {
-    fn name(&self) -> &str { "anthropic" }
-    fn model(&self) -> &str { &self.model }
+    fn name(&self) -> &str {
+        "anthropic"
+    }
+
+    fn model(&self) -> &str {
+        &self.model
+    }
+
     fn max_context_tokens(&self) -> usize {
         match self.model.as_str() {
             "claude-3-5-sonnet-20241022" | "claude-3-5-sonnet-latest" => 200_000,
@@ -42,17 +62,37 @@ impl LlmProvider for AnthropicProvider {
             body["system"] = serde_json::json!(request.system);
         }
 
-        let resp = self.client
+        let resp = self
+            .client
             .post("https://api.anthropic.com/v1/messages")
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
             .json(&body)
-            .send().await
-            .context("Anthropic request failed")?
+            .send()
+            .await
+            .context("Anthropic request failed")?;
+
+        // Handle rate limit (429) specifically
+        if resp.status().as_u16() == 429 {
+            let retry_after = resp
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(60);
+            anyhow::bail!(
+                "Anthropic rate limit exceeded. Retry after {} seconds.",
+                retry_after
+            );
+        }
+
+        let resp = resp
             .error_for_status()
             .context("Anthropic returned error")?;
 
-        let v: serde_json::Value = resp.json().await
+        let v: serde_json::Value = resp
+            .json()
+            .await
             .context("Failed to parse Anthropic response")?;
 
         Ok(LlmResponse {

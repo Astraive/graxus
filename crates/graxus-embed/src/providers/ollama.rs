@@ -4,6 +4,10 @@ use serde::Deserialize;
 
 use crate::provider::EmbeddingProvider;
 
+/// Embedding provider backed by a local Ollama instance's `/api/embed` endpoint.
+///
+/// Defaults to `http://localhost:11434` and the `nomic-embed-text` model
+/// (768 dimensions) when no values are specified.
 pub struct OllamaProvider {
     client: reqwest::Client,
     endpoint: String,
@@ -12,6 +16,10 @@ pub struct OllamaProvider {
 }
 
 impl OllamaProvider {
+    /// Create a new Ollama provider.
+    ///
+    /// - `endpoint` defaults to `"http://localhost:11434"` when `None`.
+    /// - `model` defaults to `"nomic-embed-text"` when `None`.
     pub fn new(endpoint: Option<String>, model: Option<String>) -> Self {
         let endpoint = endpoint.unwrap_or_else(|| "http://localhost:11434".to_string());
         let model = model.unwrap_or_else(|| "nomic-embed-text".to_string());

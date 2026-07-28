@@ -25,14 +25,14 @@ graxus update --dry-run    # Show what would change
 8. Save updated indexes
 
 ### Implementation Steps
-- [ ] Add `FileDiff` struct to `graxus-core::scanner` with `added`, `modified`, `removed` fields
-- [ ] Add `diff_scan(root, config, previous_files) -> FileDiff` function
-- [ ] Add `Update` CLI command to `graxus-cli`
-- [ ] Modify `graxus-codemap` to support incremental updates (remove/add symbols per file)
-- [ ] Modify `graxus-docgraph` to support incremental updates (remove/add nodes per file)
-- [ ] Add `--dry-run` flag that prints diff without applying
-- [ ] Add `--full` flag that delegates to existing `graxus index`
-- [ ] Snapshot before mutation (existing `graxus-index` snapshot system)
+- [x] Add `FileDiff` struct to `graxus-core::scanner` with `added`, `modified`, `removed` fields
+- [x] Add `diff_scan(root, config, previous_files) -> FileDiff` function
+- [x] Add `Update` CLI command to `graxus-cli`
+- [x] Modify `graxus-codemap` to support incremental updates (remove/add symbols per file)
+- [x] Modify `graxus-docgraph` to support incremental updates (remove/add nodes per file)
+- [x] Add `--dry-run` flag that prints diff without applying
+- [x] Add `--full` flag that delegates to existing `graxus index`
+- [x] Snapshot before mutation (existing `graxus-index` snapshot system)
 
 ### Key Files
 - `crates/graxus-core/src/scanner.rs` — add diff logic

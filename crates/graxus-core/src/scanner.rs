@@ -3,13 +3,14 @@ use chrono::{DateTime, Utc};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::GraxusConfig;
 use crate::file_types::{self, FileKind, Language};
 
+/// A file discovered during project scanning, with metadata and hash.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScannedFile {
     pub path: PathBuf,
@@ -67,7 +68,7 @@ pub fn scan(root: &Path, config: &GraxusConfig) -> Result<Vec<ScannedFile>> {
         let metadata = fs::metadata(path).context("Failed to read file metadata")?;
         let modified: DateTime<Utc> = metadata
             .modified()
-            .map(|t| DateTime::from(t))
+            .map(DateTime::from)
             .unwrap_or_else(|_| Utc::now());
         let size = metadata.len();
         let hash = hash_file(path)?;
@@ -97,11 +98,22 @@ fn build_glob_set(patterns: &[String]) -> Result<GlobSet> {
     builder.build().context("Failed to build glob set")
 }
 
-/// Compute SHA-256 hash of a file.
+/// Compute SHA-256 hash of a file using streaming to avoid loading the entire file into memory.
 fn hash_file(path: &Path) -> Result<String> {
-    let contents = fs::read(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+
+    let mut file = fs::File::open(path)
+        .with_context(|| format!("Failed to open {}", path.display()))?;
     let mut hasher = Sha256::new();
-    hasher.update(&contents);
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = file.read(&mut buf).context("Failed to read file for hashing")?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
     Ok(format!("{:x}", hasher.finalize()))
 }
 
@@ -149,7 +161,11 @@ pub fn compute_diff(old_files: &[ScannedFile], new_files: &[ScannedFile]) -> Fil
         }
     }
 
-    FileDiff { added, modified, deleted }
+    FileDiff {
+        added,
+        modified,
+        deleted,
+    }
 }
 
 /// Load saved file list from .graxus/files.json
@@ -170,8 +186,6 @@ pub fn save_saved_files(graxus_dir: &Path, files: &[ScannedFile]) -> Result<()> 
     std::fs::write(&path, json)?;
     Ok(())
 }
-
-use std::collections::HashMap;
 
 /// Scan and separate files into docs and code categories.
 pub fn scan_categorized(

@@ -99,13 +99,13 @@ mod tests {
 
     #[test]
     fn test_compute_diff_no_changes() {
-        let hunks = compute_diff("hello\nworld\n", "hello\nworld\n");
+        let hunks = compute_diff("goodbye\nworld\n", "goodbye\nworld\n");
         assert!(hunks.is_empty());
     }
 
     #[test]
     fn test_compute_diff_added_line() {
-        let hunks = compute_diff("hello\n", "hello\nworld\n");
+        let hunks = compute_diff("goodbye\n", "goodbye\nworld\n");
         assert_eq!(hunks.len(), 1);
         assert_eq!(hunks[0].added, vec!["world"]);
         assert!(hunks[0].removed.is_empty());
@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn test_compute_diff_removed_line() {
-        let hunks = compute_diff("hello\nworld\n", "hello\n");
+        let hunks = compute_diff("goodbye\nworld\n", "goodbye\n");
         assert_eq!(hunks.len(), 1);
         assert_eq!(hunks[0].removed, vec!["world"]);
         assert!(hunks[0].added.is_empty());
@@ -121,7 +121,7 @@ mod tests {
 
     #[test]
     fn test_compute_diff_changed_line() {
-        let hunks = compute_diff("hello\nworld\n", "hello\nrust\n");
+        let hunks = compute_diff("goodbye\nworld\n", "goodbye\nrust\n");
         assert_eq!(hunks.len(), 1);
         assert_eq!(hunks[0].removed, vec!["world"]);
         assert_eq!(hunks[0].added, vec!["rust"]);
