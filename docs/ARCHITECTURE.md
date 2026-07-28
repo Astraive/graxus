@@ -23,20 +23,24 @@ graxus/
   crates/
     graxus-core/       — Config, scanner, workspace, file types
     graxus-docgraph/   — Markdown parsing, wiki links, backlinks
-    graxus-codemap/    — Ripex/tree-sitter parsing, symbols, imports, calls
-    graxus-index/      — JSON storage, snapshots
+    graxus-codemap/    — Ripex/tree-sitter parsing, normalized code and framework facts
+    graxus-index/      — JSON snapshots and SQLite-backed fact storage
     graxus-edit/       — Find/replace engine with safety
-    graxus-agent-api/  — Bridge layer, context queries
-    graxus-cli/        — CLI interface
+    graxus-agent-api/  — Query-aware, token-bounded agent context and export
+    graxus-cli/        — Indexing, semantic queries, diagnostics, and workflows
 ```
 
 ## Data Flow
 
-1. `graxus index` scans the repository
-2. [[Docs Graph]] parses Markdown files
-3. [[Code Codemap]] parses source files with Ripex and falls back to tree-sitter per file
-4. [[Bridge Layer]] connects docs to code
-5. Agent API exposes context for AI agents
+1. `graxus index` scans the repository.
+2. [[Docs Graph]] parses Markdown files into the documentation graph.
+3. [[Code Codemap]] parses each source file with Ripex first, then uses
+   tree-sitter only as a per-file fallback.
+4. The codemap normalizes symbols, imports, calls, variables, HTTP routes, type
+   relationships, and DI bindings; it resolves cross-file links and persists
+   JSON plus SQLite records.
+5. [[Bridge Layer]] connects docs to code. The Agent API and CLI expose
+   query-specific semantic context.
 
 ## Knowledge Layers
 
@@ -53,11 +57,11 @@ See [[DOCS_GRAPH]] for details.
 
 See [[CODEMAP]] for details.
 
-- Ripex-first parsing with explicit per-file tree-sitter fallback
-- lossless Ripex fact payloads alongside normalized cross-file facts
-- Language support: TypeScript, Rust, Go, Python
-- Import resolution with confidence levels
-- Call graph extraction
+- Ripex-first parsing with explicit per-file tree-sitter fallback and retained backend diagnostics
+- Lossless parser-native facts linked to normalized symbols, imports, calls, and variables
+- Framework-native HTTP routes with registration, handler, framework, and middleware metadata
+- Type implementation/inheritance facts and framework DI contract-to-concrete bindings
+- Cross-file import, call, and route-handler resolution with explicit confidence
 
 ## Related Notes
 
