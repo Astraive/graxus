@@ -32,8 +32,12 @@ impl Debouncer {
     /// Record a file change event. Returns None if still debouncing.
     /// Returns Some(files) when the debounce period has elapsed since the last event.
     fn record(&mut self, path: PathBuf) -> Option<&HashSet<PathBuf>> {
+        self.record_at(path, Instant::now())
+    }
+
+    fn record_at(&mut self, path: PathBuf, event_time: Instant) -> Option<&HashSet<PathBuf>> {
         self.pending_files.insert(path);
-        self.last_event_time = Some(Instant::now());
+        self.last_event_time = Some(event_time);
         self.trigger_pending = true;
         None
     }
@@ -41,11 +45,15 @@ impl Debouncer {
     /// Check if the debounce period has elapsed and we should trigger.
     /// Returns Some(files) if ready, None if still waiting.
     fn check_trigger(&mut self) -> Option<&HashSet<PathBuf>> {
+        self.check_trigger_at(Instant::now())
+    }
+
+    fn check_trigger_at(&mut self, now: Instant) -> Option<&HashSet<PathBuf>> {
         if !self.trigger_pending {
             return None;
         }
         if let Some(last) = self.last_event_time {
-            if last.elapsed() >= self.debounce_duration {
+            if now.duration_since(last) >= self.debounce_duration {
                 self.trigger_pending = false;
                 self.last_event_time = None;
                 return Some(&self.pending_files);
@@ -235,47 +243,50 @@ mod tests {
     #[test]
     fn test_debouncer_triggers_after_quiet_period() {
         let mut debouncer = Debouncer::new(Duration::from_millis(50));
+        let start = Instant::now();
 
-        // Record an event
-        debouncer.record(PathBuf::from("src/main.rs"));
-        assert!(debouncer.check_trigger().is_none()); // Not yet, just recorded
+        debouncer.record_at(PathBuf::from("src/main.rs"), start);
+        assert!(debouncer
+            .check_trigger_at(start + Duration::from_millis(49))
+            .is_none());
 
-        // Wait for debounce period
-        std::thread::sleep(Duration::from_millis(60));
-        let files = debouncer.check_trigger();
-        assert!(files.is_some());
-        assert!(files.unwrap().contains(&PathBuf::from("src/main.rs")));
+        let files = debouncer
+            .check_trigger_at(start + Duration::from_millis(50))
+            .unwrap();
+        assert!(files.contains(&PathBuf::from("src/main.rs")));
     }
 
     #[test]
     fn test_debouncer_resets_on_new_event() {
         let mut debouncer = Debouncer::new(Duration::from_millis(100));
+        let start = Instant::now();
 
-        debouncer.record(PathBuf::from("src/a.rs"));
-        std::thread::sleep(Duration::from_millis(60));
-        debouncer.record(PathBuf::from("src/b.rs")); // Reset timer
-        std::thread::sleep(Duration::from_millis(60));
+        debouncer.record_at(PathBuf::from("src/a.rs"), start);
+        debouncer.record_at(PathBuf::from("src/b.rs"), start + Duration::from_millis(60));
 
-        // Only 60ms since last event, debounce is 100ms
-        assert!(debouncer.check_trigger().is_none());
+        assert!(debouncer
+            .check_trigger_at(start + Duration::from_millis(159))
+            .is_none());
 
-        std::thread::sleep(Duration::from_millis(50));
-        let files = debouncer.check_trigger();
-        assert!(files.is_some());
-        assert!(files.unwrap().contains(&PathBuf::from("src/a.rs")));
-        assert!(files.unwrap().contains(&PathBuf::from("src/b.rs")));
+        let files = debouncer
+            .check_trigger_at(start + Duration::from_millis(160))
+            .unwrap();
+        assert!(files.contains(&PathBuf::from("src/a.rs")));
+        assert!(files.contains(&PathBuf::from("src/b.rs")));
     }
 
     #[test]
     fn test_debouncer_collects_multiple_files() {
         let mut debouncer = Debouncer::new(Duration::from_millis(50));
+        let start = Instant::now();
 
-        debouncer.record(PathBuf::from("src/a.rs"));
-        debouncer.record(PathBuf::from("src/b.rs"));
-        debouncer.record(PathBuf::from("src/c.rs"));
+        debouncer.record_at(PathBuf::from("src/a.rs"), start);
+        debouncer.record_at(PathBuf::from("src/b.rs"), start);
+        debouncer.record_at(PathBuf::from("src/c.rs"), start);
 
-        std::thread::sleep(Duration::from_millis(60));
-        let files = debouncer.check_trigger().unwrap();
+        let files = debouncer
+            .check_trigger_at(start + Duration::from_millis(50))
+            .unwrap();
         assert_eq!(files.len(), 3);
     }
 
