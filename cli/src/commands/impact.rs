@@ -11,9 +11,8 @@ use crate::context::CliContext;
 /// * `file` - File or symbol to analyze
 /// * `depth` - Maximum traversal depth
 /// * `direction` - Direction of analysis: `callers` (who calls the target),
-///                 `callees` (what the target calls), `both`, or `importers`
-///                 (files that import the target). Unknown values fall back to
-///                 `callers`.
+///   `callees` (what the target calls), `both`, or `importers` (files that
+///   import the target). Unknown values fall back to `callers`.
 /// * `max_symbols` - Maximum number of symbols to return (0 = unlimited)
 /// * `max_files` - Maximum number of files to return (0 = unlimited)
 /// * `json` - Output as JSON

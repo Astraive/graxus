@@ -43,15 +43,15 @@ pub fn resolver() -> impl FrameworkResolver {
 
 fn has_axum_evidence(node: Node<'_>, source: &str) -> bool {
     match node.kind() {
-        "use_declaration" | "extern_crate_declaration" => {
-            if imports_crate(node_text(node, source).unwrap_or_default(), "axum") {
-                return true;
-            }
+        "use_declaration" | "extern_crate_declaration"
+            if imports_crate(node_text(node, source).unwrap_or_default(), "axum") =>
+        {
+            return true;
         }
-        "scoped_identifier" => {
-            if node_text(node, source).is_some_and(|path| path.starts_with("axum::")) {
-                return true;
-            }
+        "scoped_identifier"
+            if node_text(node, source).is_some_and(|path| path.starts_with("axum::")) =>
+        {
+            return true;
         }
         _ => {}
     }

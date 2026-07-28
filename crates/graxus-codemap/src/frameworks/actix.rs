@@ -43,22 +43,21 @@ pub fn resolver() -> impl FrameworkResolver {
 
 fn has_actix_evidence(node: Node<'_>, source: &str) -> bool {
     match node.kind() {
-        "use_declaration" | "extern_crate_declaration" => {
-            if imports_crate(node_text(node, source).unwrap_or_default(), "actix_web") {
-                return true;
-            }
+        "use_declaration" | "extern_crate_declaration"
+            if imports_crate(node_text(node, source).unwrap_or_default(), "actix_web") =>
+        {
+            return true;
         }
-        "attribute_item" => {
+        "attribute_item"
             if node_text(node, source)
-                .is_some_and(|attribute| attribute.trim_start().starts_with("#[actix_web::"))
-            {
-                return true;
-            }
+                .is_some_and(|attribute| attribute.trim_start().starts_with("#[actix_web::")) =>
+        {
+            return true;
         }
-        "scoped_identifier" => {
-            if node_text(node, source).is_some_and(|path| path.starts_with("actix_web::")) {
-                return true;
-            }
+        "scoped_identifier"
+            if node_text(node, source).is_some_and(|path| path.starts_with("actix_web::")) =>
+        {
+            return true;
         }
         _ => {}
     }
@@ -87,8 +86,8 @@ fn imports_crate(declaration: &str, crate_name: &str) -> bool {
     root == Some(crate_name)
 }
 
-fn collect_functions<'tree>(
-    node: Node<'tree>,
+fn collect_functions(
+    node: Node<'_>,
     source: &str,
     file: &str,
     routes: &mut Vec<RouteFact>,

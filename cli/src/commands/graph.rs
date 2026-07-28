@@ -92,11 +92,11 @@ pub fn run_docs(
             };
             println!("  {}{}", node.path, tags_str);
         }
-        let total = if tag.is_some() {
+        let total = if let Some(tag) = tag {
             graph
                 .nodes
                 .iter()
-                .filter(|n| n.tags.iter().any(|t| t == tag.unwrap()))
+                .filter(|n| n.tags.iter().any(|node_tag| node_tag == tag))
                 .count()
         } else {
             graph.nodes.len()
@@ -170,7 +170,7 @@ pub fn run_tags(ctx: &CliContext, tag: Option<&str>, min_count: usize) -> Result
     }
 
     let mut tags: Vec<_> = tag_counts.into_iter().collect();
-    tags.sort_by(|a, b| b.1.cmp(&a.1));
+    tags.sort_by_key(|item| std::cmp::Reverse(item.1));
 
     println!("{}", "=== Tags ===".green().bold());
     let mut shown = 0;

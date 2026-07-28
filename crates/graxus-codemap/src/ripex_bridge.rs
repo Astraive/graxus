@@ -14,8 +14,6 @@
 //!
 //! Parser-native payloads use the same ids as their normalized facts.
 
-#![cfg(feature = "ripex")]
-
 use anyhow::{anyhow, Context, Result};
 use graxus_core::ScannedFile;
 
@@ -157,9 +155,9 @@ pub fn try_extract(
             .cmp(&b.0.line_start)
             .then(a.0.name.cmp(&b.0.name))
     });
-    imports.sort_by(|a, b| a.0.line.cmp(&b.0.line));
+    imports.sort_by_key(|a| a.0.line);
     calls.sort_by(|a, b| a.0.line.cmp(&b.0.line).then(a.0.column.cmp(&b.0.column)));
-    variables.sort_by(|a, b| a.0.line_def.cmp(&b.0.line_def));
+    variables.sort_by_key(|a| a.0.line_def);
 
     let mut parser_facts =
         Vec::with_capacity(symbols.len() + imports.len() + calls.len() + variables.len());

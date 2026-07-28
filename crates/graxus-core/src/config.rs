@@ -655,7 +655,7 @@ pub struct GraphConfig {
 /// ripex covers 8 languages (js/ts, python, go, rust, c, cpp, csharp);
 /// tree-sitter is always used as a runtime fallback on parse failure or for
 /// unsupported languages (java/kotlin/swift, markdown, etc.).
-
+///
 /// Per-command overrides for the `codemap` command.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CodemapConfig {

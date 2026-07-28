@@ -65,6 +65,9 @@ pub fn resolver() -> impl FrameworkResolver {
     CrowResolver
 }
 
+// Route fields stay separate here so callers can transfer parser-owned strings
+// without an intermediate allocation.
+#[allow(clippy::too_many_arguments)]
 fn push_route(
     routes: &mut Vec<RouteFact>,
     seen: &mut HashSet<String>,
@@ -429,8 +432,7 @@ fn is_identifier_byte(byte: Option<u8>) -> bool {
 }
 
 fn is_preprocessor_position(source: &str, index: usize) -> bool {
-    let line_start = source[..index]
-        .as_bytes()
+    let line_start = source.as_bytes()[..index]
         .iter()
         .rposition(|byte| *byte == b'\n')
         .map_or(0, |position| position + 1);

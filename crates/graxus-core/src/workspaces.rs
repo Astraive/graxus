@@ -372,13 +372,11 @@ fn strip_toml_comment(line: &str) -> &str {
             if b == string_char {
                 in_string = false;
             }
-        } else {
-            if b == b'"' || b == b'\'' {
-                in_string = true;
-                string_char = b;
-            } else if b == b'#' {
-                return &line[..i];
-            }
+        } else if b == b'"' || b == b'\'' {
+            in_string = true;
+            string_char = b;
+        } else if b == b'#' {
+            return &line[..i];
         }
         i += 1;
     }

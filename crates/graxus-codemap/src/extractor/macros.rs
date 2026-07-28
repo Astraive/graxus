@@ -81,25 +81,23 @@ pub fn extract_macros(source: &str, file_path: &str, language: &str) -> Vec<Macr
                     }
                 }
             }
-            "c" | "cpp" => {
-                if trimmed.starts_with("#define") {
-                    let rest = trimmed.strip_prefix("#define").unwrap_or(trimmed).trim();
-                    let name = rest
-                        .split(|c: char| c.is_whitespace() || c == '(')
-                        .next()
-                        .unwrap_or(rest)
-                        .trim()
-                        .to_string();
-                    if !name.is_empty() {
-                        facts.push(MacroFact {
-                            file: file_path.to_string(),
-                            language: language.to_string(),
-                            name,
-                            kind: MacroKind::Preprocessor,
-                            line: line_num,
-                            exported: false,
-                        });
-                    }
+            "c" | "cpp" if trimmed.starts_with("#define") => {
+                let rest = trimmed.strip_prefix("#define").unwrap_or(trimmed).trim();
+                let name = rest
+                    .split(|c: char| c.is_whitespace() || c == '(')
+                    .next()
+                    .unwrap_or(rest)
+                    .trim()
+                    .to_string();
+                if !name.is_empty() {
+                    facts.push(MacroFact {
+                        file: file_path.to_string(),
+                        language: language.to_string(),
+                        name,
+                        kind: MacroKind::Preprocessor,
+                        line: line_num,
+                        exported: false,
+                    });
                 }
             }
             _ => {}

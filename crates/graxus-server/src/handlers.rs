@@ -185,18 +185,11 @@ fn handle_check_file(
     }
 
     let file_path = state.root.join(file);
-    #[cfg(feature = "ripex")]
-    {
-        match graxus_codemap::ripex_bridge::run_compiler_check(&file_path, false) {
-            Ok(report) => match serde_json::to_value(&report) {
-                Ok(v) => RpcResponse::success(id, v),
-                Err(e) => RpcResponse::error(id, -32603, &format!("Serialization error: {}", e)),
-            },
-            Err(e) => RpcResponse::error(id, -32603, &format!("Compiler check error: {}", e)),
-        }
-    }
-    #[cfg(not(feature = "ripex"))]
-    {
-        RpcResponse::error(id, -32000, "ripex feature disabled")
+    match graxus_codemap::ripex_bridge::run_compiler_check(&file_path, false) {
+        Ok(report) => match serde_json::to_value(&report) {
+            Ok(value) => RpcResponse::success(id, value),
+            Err(error) => RpcResponse::error(id, -32603, &format!("Serialization error: {error}")),
+        },
+        Err(error) => RpcResponse::error(id, -32603, &format!("Compiler check error: {error}")),
     }
 }

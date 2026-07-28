@@ -136,7 +136,6 @@ fn extract_rust_impls(
             line,
             ImplKind::TraitImpl,
         );
-        return;
     }
 
     // Inherent `impl Type { ... }` blocks are intentionally omitted.  They

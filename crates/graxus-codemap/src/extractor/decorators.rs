@@ -70,50 +70,47 @@ pub fn extract_decorators(source: &str, file_path: &str, language: &str) -> Vec<
                     }
                 }
             }
-            "csharp" => {
+            "csharp"
                 if trimmed.starts_with('[')
                     && trimmed.contains(']')
                     && !trimmed.starts_with("[!")
-                    && !trimmed.starts_with("[/")
+                    && !trimmed.starts_with("[/") =>
+            {
+                // Extract attribute name
+                let inner = &trimmed[1..trimmed.find(']').unwrap_or(trimmed.len())];
+                let name = inner.split('(').next().unwrap_or(inner).trim().to_string();
+                if !name.is_empty()
+                    && name
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false)
                 {
-                    // Extract attribute name
-                    let inner = &trimmed[1..trimmed.find(']').unwrap_or(trimmed.len())];
-                    let name = inner.split('(').next().unwrap_or(inner).trim().to_string();
-                    if !name.is_empty()
-                        && name
-                            .chars()
-                            .next()
-                            .map(|c| c.is_uppercase())
-                            .unwrap_or(false)
-                    {
-                        // Look ahead for the definition line
-                        let target = find_next_definition(source, line_idx);
-                        facts.push(DecoratorFact {
-                            file: file_path.to_string(),
-                            language: language.to_string(),
-                            name,
-                            full_text: trimmed.to_string(),
-                            line: line_num,
-                            target_symbol: target,
-                        });
-                    }
+                    // Look ahead for the definition line
+                    let target = find_next_definition(source, line_idx);
+                    facts.push(DecoratorFact {
+                        file: file_path.to_string(),
+                        language: language.to_string(),
+                        name,
+                        full_text: trimmed.to_string(),
+                        line: line_num,
+                        target_symbol: target,
+                    });
                 }
             }
-            "rust" => {
-                if trimmed.starts_with("#[") && !trimmed.starts_with("#![") {
-                    let inner = &trimmed[2..trimmed.find(']').unwrap_or(trimmed.len())];
-                    let name = inner.split('(').next().unwrap_or(inner).trim().to_string();
-                    if !name.is_empty() {
-                        let target = find_next_definition(source, line_idx);
-                        facts.push(DecoratorFact {
-                            file: file_path.to_string(),
-                            language: language.to_string(),
-                            name,
-                            full_text: trimmed.to_string(),
-                            line: line_num,
-                            target_symbol: target,
-                        });
-                    }
+            "rust" if trimmed.starts_with("#[") && !trimmed.starts_with("#![") => {
+                let inner = &trimmed[2..trimmed.find(']').unwrap_or(trimmed.len())];
+                let name = inner.split('(').next().unwrap_or(inner).trim().to_string();
+                if !name.is_empty() {
+                    let target = find_next_definition(source, line_idx);
+                    facts.push(DecoratorFact {
+                        file: file_path.to_string(),
+                        language: language.to_string(),
+                        name,
+                        full_text: trimmed.to_string(),
+                        line: line_num,
+                        target_symbol: target,
+                    });
                 }
             }
             _ => {}

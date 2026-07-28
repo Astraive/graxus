@@ -932,6 +932,8 @@ impl CodeGraph {
     }
 
     /// Create a code graph from individual parts. Indexes are built lazily on first use.
+    // Kept as individual collections for the long-standing public construction API.
+    #[allow(clippy::too_many_arguments)]
     pub fn from_parts(
         files: Vec<FileNode>,
         symbols: Vec<SymbolFact>,

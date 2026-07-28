@@ -9,11 +9,11 @@ use crate::context::CliContext;
 /// # Arguments
 /// * `ctx` - Shared CLI runtime context (global args)
 /// * `min_confidence` - Minimum confidence (0-100) that a symbol is truly dead.
-///                      Higher = stricter (only private uncalled symbols).
+///   Higher = stricter (only private uncalled symbols).
 /// * `limit` - Maximum number of results to return
 /// * `include_exported` - If true, treat exported symbols as dead-code candidates
-///                        (off by default: exported symbols are assumed to be a
-///                        public API surface and excluded).
+///   (off by default: exported symbols are assumed to be a public API surface
+///   and excluded).
 /// * `exclude_tests` - If true (default), exclude test symbols and test files
 /// * `json` - Output as JSON
 pub fn run(

@@ -13,6 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout Ripex dependency
+        shell: pwsh
+        run: |
+          $ripexPath = Join-Path (Split-Path -Parent $env:GITHUB_WORKSPACE) "ripex"
+          git clone --depth 1 https://github.com/Astraive/ripex.git $ripexPath
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -30,6 +35,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout Ripex dependency
+        shell: pwsh
+        run: |
+          $ripexPath = Join-Path (Split-Path -Parent $env:GITHUB_WORKSPACE) "ripex"
+          git clone --depth 1 https://github.com/Astraive/ripex.git $ripexPath
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace

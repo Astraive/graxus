@@ -428,7 +428,7 @@ fn scope_value(value: &str) -> Option<&str> {
             let after = after.trim_start();
             if let Some(after_colon) = after.strip_prefix(':') {
                 let end = after_colon
-                    .find(|character| matches!(character, ',' | '}' | ')' | '\n' | '\r'))
+                    .find([',', '}', ')', '\n', '\r'])
                     .unwrap_or(after_colon.len());
                 return Some(after_colon[..end].trim());
             }

@@ -20,6 +20,8 @@ use crate::filters::{apply_filters, build_glob_set};
 /// * `exclude` - Exclude glob patterns for file filtering
 /// * `lang` - Filter by programming language
 /// * `max_files` - Maximum number of files to process
+// CLI dispatch keeps these independently parsed flags explicit.
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     ctx: &CliContext,
     docs_only: bool,

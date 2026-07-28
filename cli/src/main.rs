@@ -713,13 +713,7 @@ fn main() {
         .spawn(real_main)
         .expect("failed to spawn graxus worker thread");
 
-    let exit_code = match worker.join() {
-        Ok(code) => code,
-        Err(_) => {
-            // The worker panicked; the panic hook already printed the message.
-            101
-        }
-    };
+    let exit_code = worker.join().unwrap_or(101);
     std::process::exit(exit_code);
 }
 

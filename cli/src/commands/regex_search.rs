@@ -74,7 +74,7 @@ pub fn run(
                     let center = line_num - 1; // 0-based
                     let start = center.saturating_sub(context_lines);
                     let end = (center + context_lines + 1).min(lines.len());
-                    for i in start..end {
+                    for (i, context_line) in lines.iter().enumerate().take(end).skip(start) {
                         let prefix = if i == center { ">" } else { " " };
                         let n = i + 1;
                         if i == center {
@@ -89,7 +89,7 @@ pub fn run(
                                 "    {} {:>4}: {}",
                                 prefix.dimmed(),
                                 n.to_string().dimmed(),
-                                lines[i]
+                                context_line
                             );
                         }
                     }

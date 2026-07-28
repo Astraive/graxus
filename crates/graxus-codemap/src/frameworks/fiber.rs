@@ -104,20 +104,17 @@ fn collect_framework_receivers(
                 }
             }
         }
-        "var_spec" => {
-            if contains_framework_constructor(node, source, package_names)
-                || contains_framework_type(node, source, package_names)
-            {
-                if let Some(name) = first_identifier(node, source) {
-                    receivers.insert(name);
-                }
+        "var_spec"
+            if (contains_framework_constructor(node, source, package_names)
+                || contains_framework_type(node, source, package_names)) =>
+        {
+            if let Some(name) = first_identifier(node, source) {
+                receivers.insert(name);
             }
         }
-        "parameter_declaration" => {
-            if contains_framework_type(node, source, package_names) {
-                if let Some(name) = first_identifier(node, source) {
-                    receivers.insert(name);
-                }
+        "parameter_declaration" if contains_framework_type(node, source, package_names) => {
+            if let Some(name) = first_identifier(node, source) {
+                receivers.insert(name);
             }
         }
         _ => {}

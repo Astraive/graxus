@@ -106,14 +106,14 @@ impl BridgeBuilder {
                 if code_graph.has_file(code_path) {
                     edges.push(BridgeEdge {
                         from: node.id.clone(),
-                        to: code_path.clone(),
+                        to: code_path.to_string(),
                         edge_type: BridgeEdgeType::DocDescribesCode,
                         confidence: ConfidenceScore::new(85.0, ResolutionMethod::PathMatchOnly),
                     });
                 } else {
                     edges.push(BridgeEdge {
                         from: node.id.clone(),
-                        to: code_path.clone(),
+                        to: code_path.to_string(),
                         edge_type: BridgeEdgeType::DocMayBeStale,
                         confidence: ConfidenceScore::new(85.0, ResolutionMethod::PathMatchOnly),
                     });
@@ -124,7 +124,7 @@ impl BridgeBuilder {
                 if code_graph.find_symbol(symbol_name).is_some() {
                     edges.push(BridgeEdge {
                         from: node.id.clone(),
-                        to: symbol_name.clone(),
+                        to: symbol_name.to_string(),
                         edge_type: BridgeEdgeType::DocReferencesSymbol,
                         confidence: ConfidenceScore::new(85.0, ResolutionMethod::PathMatchOnly),
                     });
