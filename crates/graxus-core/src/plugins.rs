@@ -477,7 +477,11 @@ mod tests {
     /// Returns the entry_point filename (e.g. "plugin.bat" on Windows, "plugin.sh" on Unix).
     fn write_python_plugin(plugin_dir: &Path, name: &str, python_code: &str) -> String {
         let script_path = plugin_dir.join(format!("{}.py", name));
-        std::fs::write(&script_path, python_code).unwrap();
+        std::fs::write(
+            &script_path,
+            format!("#!/usr/bin/env python3\n{python_code}"),
+        )
+        .unwrap();
 
         if cfg!(target_os = "windows") {
             let bat_path = plugin_dir.join(format!("{}.bat", name));
