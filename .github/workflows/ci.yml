@@ -26,7 +26,7 @@ jobs:
       - run: cargo clippy --workspace -- -D warnings
       - name: Install cargo-deny
         run: cargo install cargo-deny --version 0.20.2 --locked
-      - run: cargo deny check --all-features
+      - run: cargo deny --all-features check
 
   test:
     strategy:
