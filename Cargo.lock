@@ -1941,6 +1941,8 @@ dependencies = [
 [[package]]
 name = "ripex"
 version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42ab3bcb5e770eb976dc1df84b34891bfc21bd4cb72882ae8d7248c4b8ea0dce"
 dependencies = [
  "serde",
  "serde_json",
