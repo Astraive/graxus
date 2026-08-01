@@ -18,8 +18,15 @@ pub fn resolve_imports(imports: &mut [ImportFact], file_nodes: &[FileNode]) {
     }
 
     for imp in imports.iter_mut() {
-        if imp.resolved_file.is_some() {
-            continue;
+        // Reuse a previous resolution only while its target file is still in
+        // the graph. Removed files otherwise leave stale import edges after
+        // an incremental merge.
+        if let Some(resolved) = imp.resolved_file.as_deref() {
+            if file_set.contains(resolved) {
+                continue;
+            }
+            imp.resolved_file = None;
+            imp.confidence = ConfidenceScore::unresolved();
         }
 
         let result = match imp.language.as_str() {
@@ -116,6 +123,21 @@ fn resolve_rust_segments(
     let candidate = format!("{}/{}/mod.rs", base, path);
     if file_set.contains(candidate.as_str()) {
         return Some(normalize_path(&candidate));
+    }
+
+    // A `use` path usually ends with an item name rather than a module name
+    // (`crate::handler::run` resolves to `src/handler.rs`). Prefer the module
+    // containing the final item after trying the full path above.
+    if segments.len() > 1 {
+        let module_path = segments[..segments.len() - 1].join("/");
+        let candidate = format!("{}/{}.rs", base, module_path);
+        if file_set.contains(candidate.as_str()) {
+            return Some(normalize_path(&candidate));
+        }
+        let candidate = format!("{}/{}/mod.rs", base, module_path);
+        if file_set.contains(candidate.as_str()) {
+            return Some(normalize_path(&candidate));
+        }
     }
 
     // Try just the last segment as a file
@@ -390,5 +412,87 @@ fn resolve_c_cpp(
 }
 
 fn normalize_path(path: &str) -> String {
-    path.replace('\\', "/").replace("//", "/").to_string()
+    let path = path.replace('\\', "/");
+    let mut components = Vec::new();
+    for component in path.split('/') {
+        match component {
+            "" | "." => {}
+            ".." => {
+                components.pop();
+            }
+            component => components.push(component),
+        }
+    }
+    components.join("/")
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ImportKind, ResolutionMethod};
+
+    fn file(path: &str) -> FileNode {
+        FileNode {
+            path: path.to_string(),
+            language: "rust".to_string(),
+            hash: String::new(),
+            size: 0,
+        }
+    }
+
+    fn import(source: &str, resolved_file: Option<&str>) -> ImportFact {
+        ImportFact {
+            id: "import:test".to_string(),
+            file: "src/main.rs".to_string(),
+            language: "rust".to_string(),
+            kind: ImportKind::RustUse,
+            source: source.to_string(),
+            local_name: Some("run".to_string()),
+            imported_name: None,
+            resolved_file: resolved_file.map(str::to_string),
+            line: 1,
+            confidence: resolved_file
+                .map(|_| ConfidenceScore::named_import_exact())
+                .unwrap_or_default(),
+        }
+    }
+
+    #[test]
+    fn resolves_rust_item_import_to_unchanged_module_file() {
+        let mut imports = vec![import("crate::handler::run", None)];
+        resolve_imports(&mut imports, &[file("src/main.rs"), file("src/handler.rs")]);
+
+        assert_eq!(imports[0].resolved_file.as_deref(), Some("src/handler.rs"));
+        assert_eq!(
+            imports[0].confidence.method,
+            ResolutionMethod::NamedImportExactExport
+        );
+    }
+
+    #[test]
+    fn normalizes_relative_typescript_import_paths() {
+        let mut imports = vec![ImportFact {
+            id: "import:ts".to_string(),
+            file: "src/main.ts".to_string(),
+            language: "typescript".to_string(),
+            kind: ImportKind::NamedImport,
+            source: "./handler".to_string(),
+            local_name: Some("run".to_string()),
+            imported_name: Some("run".to_string()),
+            resolved_file: None,
+            line: 1,
+            confidence: ConfidenceScore::unresolved(),
+        }];
+        resolve_imports(&mut imports, &[file("src/main.ts"), file("src/handler.ts")]);
+
+        assert_eq!(imports[0].resolved_file.as_deref(), Some("src/handler.ts"));
+    }
+
+    #[test]
+    fn clears_import_resolution_when_target_file_disappears() {
+        let mut imports = vec![import("crate::handler", Some("src/handler.rs"))];
+        resolve_imports(&mut imports, &[file("src/main.rs")]);
+
+        assert!(imports[0].resolved_file.is_none());
+        assert_eq!(imports[0].confidence, ConfidenceScore::unresolved());
+    }
 }

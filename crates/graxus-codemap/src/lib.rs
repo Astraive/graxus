@@ -1071,6 +1071,92 @@ impl CodeGraph {
         self.files.iter().map(|f| f.path.as_str()).collect()
     }
 
+    /// Refresh cross-file resolutions and relationship edges after a mutation.
+    fn refresh_relationships(&mut self) {
+        // Re-resolve every retained fact against the complete graph. Resolvers
+        // intentionally do not overwrite existing resolutions, so clear them
+        // first to prevent links to symbols/files removed by an update.
+        for import in &mut self.imports {
+            import.resolved_file = None;
+            import.confidence = ConfidenceScore::unresolved();
+        }
+        resolver::import_resolver::resolve_imports(&mut self.imports, &self.files);
+
+        for call in &mut self.calls {
+            call.resolved_symbol = None;
+        }
+        resolver::symbol_resolver::resolve_calls(&mut self.calls, &self.symbols, &self.imports);
+
+        self.routes = resolver::route_resolver::resolve_routes(
+            std::mem::take(&mut self.routes),
+            &self.symbols,
+        );
+
+        // Keep any caller-supplied edges, while restoring all edges derived
+        // from retained facts. remove_file has already discarded edges whose
+        // endpoints belonged to the changed path.
+        let mut derived_edges = Vec::new();
+        for import in &self.imports {
+            if let Some(resolved) = &import.resolved_file {
+                if self.files.iter().any(|file| &file.path == resolved) {
+                    derived_edges.push(CodeEdge {
+                        from: import.file.clone(),
+                        to: resolved.clone(),
+                        edge_type: CodeEdgeType::Imports,
+                    });
+                }
+            }
+        }
+        for symbol in &self.symbols {
+            derived_edges.push(CodeEdge {
+                from: format!("{}::{}", symbol.file, symbol.name),
+                to: symbol.file.clone(),
+                edge_type: CodeEdgeType::DefinedIn,
+            });
+        }
+        for call in &self.calls {
+            if let Some(resolved) = &call.resolved_symbol {
+                let target_exists = self.symbols.iter().any(|symbol| {
+                    resolved == &symbol.id
+                        || resolved == &format!("{}::{}", symbol.file, symbol.name)
+                });
+                if target_exists {
+                    derived_edges.push(CodeEdge {
+                        from: call.file.clone(),
+                        to: resolved.clone(),
+                        edge_type: CodeEdgeType::Calls,
+                    });
+                }
+            }
+        }
+        for type_impl in &self.type_impls {
+            derived_edges.push(CodeEdge {
+                from: format!("{}::{}", type_impl.file, type_impl.implementing_type),
+                to: type_impl.trait_or_interface.clone(),
+                edge_type: match type_impl.kind {
+                    crate::facts::ImplKind::TraitImpl
+                    | crate::facts::ImplKind::Implements
+                    | crate::facts::ImplKind::Derive => CodeEdgeType::Implements,
+                    crate::facts::ImplKind::Extends
+                    | crate::facts::ImplKind::CSharpInheritance
+                    | crate::facts::ImplKind::CppInheritance => CodeEdgeType::Extends,
+                },
+            });
+        }
+        for edge in derived_edges {
+            if !self.edges.iter().any(|existing| {
+                existing.from == edge.from
+                    && existing.to == edge.to
+                    && existing.edge_type == edge.edge_type
+            }) {
+                self.edges.push(edge);
+            }
+        }
+
+        // Rebuild indexes after resolutions and edge updates.
+        self.indexes = OnceLock::new();
+    }
+
     /// Remove all data and relationship edges associated with a file path.
     pub fn remove_file(&mut self, path: &str) {
         self.files.retain(|f| f.path != path);
@@ -1093,8 +1179,7 @@ impl CodeGraph {
         };
         self.edges
             .retain(|edge| !belongs_to_file(&edge.from) && !belongs_to_file(&edge.to));
-        // Rebuild indexes after removal
-        self.indexes = OnceLock::new();
+        self.refresh_relationships();
     }
 
     /// Merge another CodeGraph into this one.
@@ -1123,13 +1208,7 @@ impl CodeGraph {
         self.decorators.extend(other.decorators);
         self.macros.extend(other.macros);
         self.parser_results.extend(other.parser_results);
-        self.routes = resolver::route_resolver::resolve_routes(
-            std::mem::take(&mut self.routes),
-            &self.symbols,
-        );
-
-        // Rebuild indexes
-        self.indexes = OnceLock::new();
+        self.refresh_relationships();
     }
 }
 

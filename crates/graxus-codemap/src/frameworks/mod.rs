@@ -30,6 +30,24 @@ pub trait FrameworkResolver {
         Vec::new()
     }
 
+    /// Extract routes while preserving the language assigned by the caller.
+    ///
+    /// Framework implementations can override this when their syntax parser is
+    /// shared by multiple source languages (for example, Express handles both
+    /// JavaScript and TypeScript).
+    fn extract_routes_with_language(
+        &self,
+        file: &str,
+        source: &str,
+        language: &str,
+    ) -> Vec<RouteFact> {
+        let mut routes = self.extract_routes(file, source);
+        for route in &mut routes {
+            route.language = language.to_owned();
+        }
+        routes
+    }
+
     fn extract_di_bindings(&self, _file: &str, _source: &str) -> Vec<DIFact> {
         Vec::new()
     }
@@ -61,7 +79,8 @@ pub fn extract_routes(file: &str, source: &str, language: &str) -> Vec<RouteFact
             routes
         }
         "javascript" | "typescript" => {
-            let mut routes = express::resolver().extract_routes(file, source);
+            let mut routes =
+                express::resolver().extract_routes_with_language(file, source, language);
             routes.extend(nestjs::resolver().extract_routes(file, source));
             routes.extend(nextjs::resolver().extract_routes(file, source));
             routes

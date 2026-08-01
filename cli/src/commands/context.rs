@@ -1,9 +1,10 @@
 use anyhow::Result;
 use colored::Colorize;
-use graxus_agent_api::{AgentExport, BridgeBuilder};
+use graxus_agent_api::{AgentContext, AgentExport, BridgeBuilder, ContextBudget, ContextEngine};
 use graxus_codemap::CodeGraph;
-use graxus_core::{scanner, workspace};
+use graxus_core::workspace;
 use graxus_docgraph::graph::DocGraph;
+use std::collections::HashSet;
 use std::path::Path;
 
 use crate::context::CliContext;
@@ -38,73 +39,28 @@ pub fn run(
     let config = ctx.load_config(&root)?;
 
     if let Some(q) = query {
-        // Query-based context: search docs and code
-        println!(
-            "{}",
-            format!("=== Context for \"{}\" ===", q).green().bold()
-        );
-
-        // Search docs graph
+        // Query through the agent context engine so semantic facts and all
+        // limits use the same path as structured consumers.
         let docs_dir = workspace::docs_dir(&root);
-        let mut found_docs: Vec<(String, String)> = Vec::new();
-        if let Ok(graph) = DocGraph::load(&docs_dir) {
-            for node in &graph.nodes {
-                let matches_title = node.title.to_lowercase().contains(&q.to_lowercase());
-                let matches_tags = node
-                    .tags
-                    .iter()
-                    .any(|t| t.to_lowercase().contains(&q.to_lowercase()));
-                let matches_path = node.path.to_lowercase().contains(&q.to_lowercase());
-                if matches_title || matches_tags || matches_path {
-                    found_docs.push((node.path.clone(), node.title.clone()));
-                }
-            }
-            if !found_docs.is_empty() {
-                println!("\n  {} matching docs:", "Docs".cyan().bold());
-                for (path, title) in &found_docs {
-                    println!("    {} — {}", path, title);
-                }
-            }
-        }
-
-        // Search code files
-        let (_docs, code, _) = scanner::scan_categorized(&root, &config)?;
-        let code_files: Vec<_> = code.iter().collect();
-        let mut found_code = Vec::new();
-
-        for file in &code_files {
-            let content = match std::fs::read_to_string(&file.path) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-
-            let q_lower = q.to_lowercase();
-            let mut matches = 0;
-            for line in content.lines() {
-                if line.to_lowercase().contains(&q_lower) {
-                    matches += 1;
-                }
-            }
-
-            if matches > 0 || file.relative_path.to_lowercase().contains(&q_lower) {
-                found_code.push((file.relative_path.clone(), matches));
-            }
-        }
-
-        if !found_code.is_empty() {
-            println!("\n  {} matching code files:", "Code".cyan().bold());
-            for (path, count) in &found_code {
-                if *count > 0 {
-                    println!("    {} ({} matches)", path, count);
-                } else {
-                    println!("    {} (path match)", path);
-                }
-            }
-        }
-
-        if found_docs.is_empty() && found_code.is_empty() {
-            println!("  No context found for \"{}\"", q);
-        }
+        let doc_graph = DocGraph::load(&docs_dir).unwrap_or_default();
+        let code_graph = load_code_graph(&root).unwrap_or_default();
+        let bridge = BridgeBuilder::build(&doc_graph, &code_graph).unwrap_or_default();
+        let engine = ContextEngine::new(doc_graph, code_graph, bridge);
+        let mut context = engine.query_bounded(q, ContextBudget::new(_budget));
+        let max_edges = config
+            .context
+            .max_edges
+            .unwrap_or(config.defaults.max_edges);
+        limit_query_context(
+            &mut context,
+            _max_files,
+            _max_symbols.min(config.defaults.max_nodes),
+            _max_notes,
+            max_edges,
+            _depth,
+            _min_confidence,
+        );
+        print_query_context(&context);
     } else if let Some(f) = file {
         // File-based context: show everything about a file
         println!("{}", format!("=== Context for {} ===", f).green().bold());
@@ -159,11 +115,10 @@ pub fn run(
                 for import in imports {
                     println!("    Import: {}", import.source);
                 }
-                for route in codemap
-                    .routes
-                    .iter()
-                    .filter(|route| route.file == file_data.path)
-                {
+                for route in codemap.routes.iter().filter(|route| {
+                    route.file == file_data.path
+                        || route.handler_file.as_deref() == Some(file_data.path.as_str())
+                }) {
                     println!(
                         "    Route: {} {} -> {}",
                         route.method, route.path, route.handler
@@ -258,6 +213,194 @@ pub fn run(
 
     Ok(())
 }
+/// Apply the same structural limits used by the context command's other
+/// branches to a query result. Semantic facts do not carry confidence scores,
+/// so the confidence filter applies to confidence-bearing graph facts only.
+fn limit_query_context(
+    context: &mut AgentContext,
+    max_files: usize,
+    max_nodes: usize,
+    max_notes: usize,
+    max_edges: usize,
+    depth: usize,
+    min_confidence: f64,
+) {
+    for symbol in &context.code {
+        context.related_files.push(symbol.file.clone());
+    }
+    for import in &context.imports {
+        context.related_files.push(import.file.clone());
+    }
+    for call in &context.calls {
+        context.related_files.push(call.file.clone());
+    }
+    for route in &context.routes {
+        context.related_files.push(route.file.clone());
+        if let Some(handler_file) = &route.handler_file {
+            context.related_files.push(handler_file.clone());
+        }
+    }
+    for type_impl in &context.type_impls {
+        context.related_files.push(type_impl.file.clone());
+    }
+    for binding in &context.di_bindings {
+        context.related_files.push(binding.file.clone());
+    }
+
+    if max_notes > 0 {
+        context.docs.truncate(max_notes);
+    }
+    if max_nodes > 0 {
+        context.code.truncate(max_nodes);
+    }
+
+    if min_confidence > 0.0 {
+        context
+            .imports
+            .retain(|import| import.confidence.score >= min_confidence);
+        context
+            .calls
+            .retain(|call| call.confidence.score >= min_confidence);
+    }
+
+    // A depth of zero keeps direct query matches but excludes traversed
+    // relationships. ContextEngine currently exposes one-hop relationships;
+    // positive depths therefore retain those relationships.
+    if depth == 0 {
+        context.imports.clear();
+        context.calls.clear();
+        context.bridge_edges.clear();
+    }
+
+    let mut files = context.related_files.clone();
+    files.sort();
+    files.dedup();
+    let limited_files = max_files > 0 && files.len() > max_files;
+    let allowed_files: HashSet<String> = if limited_files {
+        files.into_iter().take(max_files).collect()
+    } else {
+        files.into_iter().collect()
+    };
+    let file_is_allowed = |file: &str| !limited_files || allowed_files.contains(file);
+
+    context.code.retain(|symbol| file_is_allowed(&symbol.file));
+    context
+        .imports
+        .retain(|import| file_is_allowed(&import.file));
+    context.calls.retain(|call| file_is_allowed(&call.file));
+    context.routes.retain(|route| {
+        file_is_allowed(&route.file) || route.handler_file.as_deref().is_some_and(file_is_allowed)
+    });
+    context
+        .type_impls
+        .retain(|type_impl| file_is_allowed(&type_impl.file));
+    context
+        .di_bindings
+        .retain(|binding| file_is_allowed(&binding.file));
+    context.related_files.retain(|file| file_is_allowed(file));
+    context.related_files.sort();
+    context.related_files.dedup();
+
+    // Keep a single deterministic edge budget across graph and semantic
+    // relationships. A zero cap follows the CLI convention for unlimited.
+    if max_edges > 0 {
+        let mut remaining = max_edges;
+        take_edge_budget(&mut context.bridge_edges, &mut remaining);
+        take_edge_budget(&mut context.imports, &mut remaining);
+        take_edge_budget(&mut context.calls, &mut remaining);
+        take_edge_budget(&mut context.routes, &mut remaining);
+        take_edge_budget(&mut context.type_impls, &mut remaining);
+        take_edge_budget(&mut context.di_bindings, &mut remaining);
+    }
+}
+
+fn take_edge_budget<T>(items: &mut Vec<T>, remaining: &mut usize) {
+    if items.len() > *remaining {
+        items.truncate(*remaining);
+    }
+    *remaining = (*remaining).saturating_sub(items.len());
+}
+
+fn print_query_context(context: &AgentContext) {
+    println!(
+        "{}",
+        format!("=== Context for \"{}\" ===", context.query)
+            .green()
+            .bold()
+    );
+
+    if !context.docs.is_empty() {
+        println!("\n  {} matching docs:", "Docs".cyan().bold());
+        for doc in &context.docs {
+            println!("    {} — {}", doc.path, doc.title);
+        }
+    }
+    if !context.code.is_empty() {
+        println!("\n  {} matching symbols:", "Code".cyan().bold());
+        for symbol in &context.code {
+            println!(
+                "    {:?} {} in {} (line {})",
+                symbol.kind, symbol.name, symbol.file, symbol.line_start
+            );
+        }
+    }
+    if !context.imports.is_empty() {
+        println!("\n  {} matching imports:", "Imports".cyan().bold());
+        for import in &context.imports {
+            println!("    {} <- {}", import.file, import.source);
+        }
+    }
+    if !context.calls.is_empty() {
+        println!("\n  {} matching calls:", "Calls".cyan().bold());
+        for call in &context.calls {
+            println!("    {} -> {}", call.file, call.callee_text);
+        }
+    }
+    if !context.routes.is_empty() {
+        println!("\n  {} matching routes:", "Routes".cyan().bold());
+        for route in &context.routes {
+            println!(
+                "    Route: {} {} -> {} [{}] ({})",
+                route.method, route.path, route.handler, route.framework, route.file
+            );
+        }
+    }
+    if !context.type_impls.is_empty() {
+        println!(
+            "\n  {} matching type implementations:",
+            "Types".cyan().bold()
+        );
+        for type_impl in &context.type_impls {
+            println!(
+                "    Type: {} -> {} ({})",
+                type_impl.implementing_type, type_impl.trait_or_interface, type_impl.file
+            );
+        }
+    }
+    if !context.di_bindings.is_empty() {
+        println!("\n  {} matching dependency bindings:", "DI".cyan().bold());
+        for binding in &context.di_bindings {
+            println!(
+                "    DI: {} -> {} [{}] ({})",
+                binding.abstract_type, binding.concrete_type, binding.framework, binding.file
+            );
+        }
+    }
+
+    if context.docs.is_empty()
+        && context.code.is_empty()
+        && context.imports.is_empty()
+        && context.calls.is_empty()
+        && context.routes.is_empty()
+        && context.type_impls.is_empty()
+        && context.di_bindings.is_empty()
+    {
+        println!("  No context found for \"{}\"", context.query);
+    }
+    for warning in &context.warnings {
+        println!("  Warning: {}", warning);
+    }
+}
 
 fn load_code_graph(root: &Path) -> Option<CodeGraph> {
     let codemap_path = workspace::code_dir(root).join("codemap.json");
@@ -284,24 +427,10 @@ pub fn run_export(ctx: &CliContext, budget: Option<usize>, json: bool) -> Result
         .unwrap_or(export);
 
     if json {
-        if budget.is_none() {
-            let mut compatibility = serde_json::Map::new();
-            compatibility.insert("config".into(), serde_json::to_value(&config)?);
-            compatibility.insert(
-                "docs_graph".into(),
-                serde_json::to_value(&export.doc_graph)?,
-            );
-            compatibility.insert("codemap".into(), serde_json::to_value(&export.code_graph)?);
-            let files_path = root.join(".graxus").join("files.json");
-            if let Ok(content) = std::fs::read_to_string(files_path) {
-                if let Ok(files) = serde_json::from_str(&content) {
-                    compatibility.insert("files".into(), files);
-                }
-            }
-            println!("{}", serde_json::to_string_pretty(&compatibility)?);
-        } else {
-            println!("{}", serde_json::to_string_pretty(&export)?);
-        }
+        // JSON consumers receive the same rich AgentExport shape regardless
+        // of whether a budget was requested. In particular, never bypass the
+        // bounded export with a raw codemap/files compatibility map.
+        println!("{}", serde_json::to_string_pretty(&export)?);
     } else {
         let stats = export.stats();
         println!("{}", "=== Agent Export ===".green().bold());

@@ -17,7 +17,7 @@ impl FrameworkResolver for NextJsResolver {
     }
 
     fn extract_routes(&self, file: &str, source: &str) -> Vec<RouteFact> {
-        let Some(path) = next_route_path(file) else {
+        let Some((path, language)) = next_route_path(file) else {
             return Vec::new();
         };
         let Some(tree) = parse_typescript(source) else {
@@ -43,7 +43,7 @@ impl FrameworkResolver for NextJsResolver {
                 routes.push(RouteFact {
                     id: format!("route:nextjs:{file}:{line}:{method}:{path}:{handler}"),
                     file: file.to_owned(),
-                    language: "typescript".to_owned(),
+                    language: language.to_owned(),
                     method: method.to_owned(),
                     path: path.clone(),
                     handler,
@@ -116,19 +116,18 @@ fn exported_route_method(node: Node<'_>, source: &str) -> Option<&'static str> {
     }
 }
 
-fn next_route_path(file: &str) -> Option<String> {
+fn next_route_path(file: &str) -> Option<(String, &'static str)> {
     let normalized = file.replace('\\', "/");
     let mut parts: Vec<_> = normalized
         .split('/')
         .filter(|part| !part.is_empty())
         .collect();
     let filename = parts.pop()?;
-    if !matches!(
-        filename,
-        "route.js" | "route.jsx" | "route.ts" | "route.tsx" | "route.mjs" | "route.mts"
-    ) {
-        return None;
-    }
+    let language = match filename {
+        "route.js" | "route.jsx" | "route.mjs" => "javascript",
+        "route.ts" | "route.tsx" | "route.mts" => "typescript",
+        _ => return None,
+    };
 
     let app_directory = parts.iter().rposition(|part| *part == "app")?;
     let mut path_segments = Vec::new();
@@ -140,9 +139,9 @@ fn next_route_path(file: &str) -> Option<String> {
     }
 
     if path_segments.is_empty() {
-        Some("/".to_owned())
+        Some(("/".to_owned(), language))
     } else {
-        Some(format!("/{}", path_segments.join("/")))
+        Some((format!("/{}", path_segments.join("/")), language))
     }
 }
 
@@ -201,14 +200,34 @@ mod tests {
                 .map(|route| (
                     route.method.as_str(),
                     route.path.as_str(),
-                    route.handler.as_str()
+                    route.handler.as_str(),
+                    route.language.as_str()
                 ))
                 .collect::<Vec<_>>(),
-            vec![("GET", "/api/users", "GET"), ("POST", "/api/users", "POST")]
+            vec![
+                ("GET", "/api/users", "GET", "typescript"),
+                ("POST", "/api/users", "POST", "typescript")
+            ]
         );
         assert!(routes.iter().all(|route| {
             route.framework == "nextjs" && route.file == "src/app/api/users/route.ts"
         }));
+    }
+
+    #[test]
+    fn extracts_javascript_route_language_and_metadata() {
+        let source = r#"
+            export async function GET(request) {
+                return Response.json({});
+            }
+        "#;
+
+        let routes = resolver().extract_routes("src/app/api/users/route.js", source);
+
+        assert_eq!(routes.len(), 1);
+        assert_eq!(routes[0].language, "javascript");
+        assert_eq!(routes[0].path, "/api/users");
+        assert_eq!(routes[0].handler, "GET");
     }
 
     #[test]

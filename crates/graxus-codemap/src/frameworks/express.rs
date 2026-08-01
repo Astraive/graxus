@@ -17,6 +17,26 @@ impl FrameworkResolver for ExpressResolver {
     }
 
     fn extract_routes(&self, file: &str, source: &str) -> Vec<RouteFact> {
+        self.extract_routes_for_language(file, source, self.descriptor().language)
+    }
+
+    fn extract_routes_with_language(
+        &self,
+        file: &str,
+        source: &str,
+        language: &str,
+    ) -> Vec<RouteFact> {
+        self.extract_routes_for_language(file, source, language)
+    }
+}
+
+impl ExpressResolver {
+    fn extract_routes_for_language(
+        &self,
+        file: &str,
+        source: &str,
+        language: &str,
+    ) -> Vec<RouteFact> {
         let Some(tree) = parse_typescript(source) else {
             return Vec::new();
         };
@@ -36,7 +56,7 @@ impl FrameworkResolver for ExpressResolver {
                 routes.push(RouteFact {
                     id: format!("route:express:{file}:{line}:{method}:{path}:{handler}"),
                     file: file.to_owned(),
-                    language: "javascript".to_owned(),
+                    language: language.to_owned(),
                     method: method.to_owned(),
                     path,
                     handler,
@@ -226,7 +246,7 @@ mod tests {
             client.get("/not-an-express-route", ignored);
         "#;
 
-        let routes = resolver().extract_routes("src/routes.ts", source);
+        let routes = resolver().extract_routes("src/routes.js", source);
 
         assert_eq!(routes.len(), 2);
         assert_eq!(
@@ -250,9 +270,37 @@ mod tests {
                 .map(|route| route.middleware.clone()),
             Some(vec!["require_auth".to_owned()])
         );
+        assert!(routes.iter().all(|route| route.language == "javascript"));
         assert!(routes
             .iter()
-            .all(|route| route.framework == "express" && route.file == "src/routes.ts"));
+            .all(|route| route.framework == "express" && route.file == "src/routes.js"));
+    }
+
+    #[test]
+    fn extracts_typescript_routes_with_dispatch_language() {
+        let source = r#"
+            import express from "express";
+            type Handler = () => void;
+            const app = express();
+            app.get("/users", list_users);
+        "#;
+
+        let direct = resolver().extract_routes_with_language("src/routes.ts", source, "typescript");
+        assert_eq!(direct.len(), 1);
+        assert_eq!(direct[0].language, "typescript");
+        assert_eq!(direct[0].path, "/users");
+        assert_eq!(direct[0].handler, "list_users");
+
+        let dispatched = super::super::extract_routes("src/routes.ts", source, "typescript");
+        assert_eq!(
+            dispatched
+                .iter()
+                .filter(|route| route.language == "typescript")
+                .count(),
+            1
+        );
+        assert_eq!(dispatched[0].path, "/users");
+        assert_eq!(dispatched[0].handler, "list_users");
     }
 
     #[test]

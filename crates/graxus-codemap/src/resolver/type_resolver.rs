@@ -20,7 +20,12 @@ pub fn extract_type_impls(file: &str, source: &str, language: &str) -> Vec<TypeI
         ),
         "csharp" => (
             tree_sitter_c_sharp::LANGUAGE.into(),
-            &["class_declaration", "interface_declaration"],
+            &[
+                "class_declaration",
+                "interface_declaration",
+                "record_declaration",
+                "struct_declaration",
+            ],
         ),
         "java" => (
             tree_sitter_java::LANGUAGE.into(),
@@ -313,7 +318,7 @@ struct ClassHeader<'a> {
 
 fn class_header(declaration: &str) -> Option<ClassHeader<'_>> {
     let masked_declaration = mask_non_code(declaration);
-    let (declaration_start, declaration_kind) = ["class", "interface"]
+    let (declaration_start, declaration_kind) = ["class", "interface", "record", "struct"]
         .into_iter()
         .filter_map(|kind| find_keyword(&masked_declaration, kind, 0).map(|start| (start, kind)))
         .min_by_key(|(start, _)| *start)?;
@@ -322,6 +327,15 @@ fn class_header(declaration: &str) -> Option<ClassHeader<'_>> {
     let header = &declaration[..header_end];
     let masked = masked_declaration[..header_end].to_string();
     let mut name_start = skip_whitespace(&masked, declaration_start + declaration_kind.len());
+    if declaration_kind == "record"
+        && (find_keyword(&masked, "class", name_start) == Some(name_start)
+            || find_keyword(&masked, "struct", name_start) == Some(name_start))
+    {
+        name_start = skip_whitespace(
+            &masked,
+            name_start + identifier_end(&masked, name_start) - name_start,
+        );
+    }
     if masked.as_bytes().get(name_start) == Some(&b'@') {
         name_start += 1;
     }
@@ -846,6 +860,45 @@ mod tests {
             &facts,
             "Handler",
             "IDisposable",
+            ImplKind::CSharpInheritance
+        ));
+    }
+
+    #[test]
+    fn extracts_csharp_record_and_struct_interfaces() {
+        let record = extract_type_impls(
+            "Payload.cs",
+            "public record Payload : ISerializable {}",
+            "csharp",
+        );
+        assert!(has_fact(
+            &record,
+            "Payload",
+            "ISerializable",
+            ImplKind::CSharpInheritance
+        ));
+
+        let record_struct = extract_type_impls(
+            "Payload.cs",
+            "public record struct Payload : ISerializable {}",
+            "csharp",
+        );
+        assert!(has_fact(
+            &record_struct,
+            "Payload",
+            "ISerializable",
+            ImplKind::CSharpInheritance
+        ));
+
+        let value_type = extract_type_impls(
+            "Payload.cs",
+            "public readonly struct Payload : ISerializable {}",
+            "csharp",
+        );
+        assert!(has_fact(
+            &value_type,
+            "Payload",
+            "ISerializable",
             ImplKind::CSharpInheritance
         ));
     }

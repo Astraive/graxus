@@ -192,3 +192,80 @@ fn calls_to_symbol_accepts_canonical_symbol_ids() {
 
     assert_eq!(graph.calls_to_symbol("symbol:src/lib.rs:run:1:0").len(), 1);
 }
+
+#[test]
+fn removing_a_handler_file_clears_routes_and_cross_file_edges() {
+    let mut graph = graxus_codemap::CodeGraph {
+        files: vec![
+            graxus_codemap::FileNode {
+                path: "src/routes.rs".into(),
+                language: "rust".into(),
+                hash: "routes".into(),
+                size: 0,
+            },
+            graxus_codemap::FileNode {
+                path: "src/handlers.rs".into(),
+                language: "rust".into(),
+                hash: "handlers".into(),
+                size: 0,
+            },
+        ],
+        symbols: vec![graxus_codemap::SymbolFact {
+            id: "symbol:src/handlers.rs:list_users:1:0".into(),
+            file: "src/handlers.rs".into(),
+            language: "rust".into(),
+            name: "list_users".into(),
+            ..Default::default()
+        }],
+        routes: vec![graxus_codemap::facts::route::RouteFact {
+            id: "route:src/routes.rs:1:GET:0".into(),
+            file: "src/routes.rs".into(),
+            language: "rust".into(),
+            method: "GET".into(),
+            path: "/users".into(),
+            handler: "list_users".into(),
+            handler_file: Some("src/handlers.rs".into()),
+            line: 1,
+            framework: "axum".into(),
+            middleware: Vec::new(),
+        }],
+        edges: vec![graxus_codemap::CodeEdge {
+            from: "src/routes.rs".into(),
+            to: "src/handlers.rs::list_users".into(),
+            edge_type: graxus_codemap::CodeEdgeType::Calls,
+        }],
+        ..Default::default()
+    };
+
+    graph.remove_file("src/handlers.rs");
+
+    assert_eq!(graph.routes[0].handler_file, None);
+    assert!(graph
+        .edges
+        .iter()
+        .all(|edge| edge.to != "src/handlers.rs::list_users"));
+
+    graph.merge(graxus_codemap::CodeGraph {
+        files: vec![graxus_codemap::FileNode {
+            path: "src/handlers.rs".into(),
+            language: "rust".into(),
+            hash: "renamed-handler".into(),
+            size: 0,
+        }],
+        symbols: vec![graxus_codemap::SymbolFact {
+            id: "symbol:src/handlers.rs:create_user:1:0".into(),
+            file: "src/handlers.rs".into(),
+            language: "rust".into(),
+            name: "create_user".into(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    });
+
+    assert_eq!(graph.routes[0].handler_file, None);
+    assert!(graph.find_symbol("list_users").is_none());
+    assert!(graph.find_symbol("create_user").is_some());
+    assert!(graph.edges.iter().all(|edge| {
+        edge.to != "src/handlers.rs::list_users" && edge.from != "src/handlers.rs::list_users"
+    }));
+}

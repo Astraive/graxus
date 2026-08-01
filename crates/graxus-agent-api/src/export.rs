@@ -8,7 +8,7 @@ use std::path::Path;
 use crate::bridge::BridgeEdge;
 use crate::context::estimate_tokens;
 
-const EXPORT_OVERHEAD_TOKENS: usize = 50;
+const EXPORT_OVERHEAD_TOKENS: usize = 100;
 
 /// Clone complete facts in stable order until their category allocation is full.
 ///
@@ -111,92 +111,58 @@ impl AgentExport {
         let content_budget =
             max_tokens.saturating_sub(estimate_tokens(&self.project_name) + EXPORT_OVERHEAD_TOKENS);
 
-        // Semantic facts get 45% of the available tokens. Each category is
-        // independently bounded so a large route or binding cannot starve a
-        // different semantic relationship class.
-        let sym_budget = content_budget * 25 / 100;
-        let imp_budget = content_budget * 10 / 100;
-        let call_budget = content_budget * 10 / 100;
+        // Every emitted collection receives an independent allocation. The
+        // allocations deliberately include structural collections (files,
+        // edges, parser provenance, and documentation edges), not just the
+        // normalized semantic facts.
+        let sym_budget = content_budget * 20 / 100;
+        let imp_budget = content_budget * 8 / 100;
+        let call_budget = content_budget * 8 / 100;
         let route_budget = content_budget * 15 / 100;
-        let type_impl_budget = content_budget * 15 / 100;
-        let di_binding_budget = content_budget * 15 / 100;
+        let type_impl_budget = content_budget * 10 / 100;
+        let di_binding_budget = content_budget * 10 / 100;
         let bridge_budget = content_budget * 5 / 100;
         let doc_budget = content_budget * 5 / 100;
+        let doc_edge_budget = content_budget * 3 / 100;
+        let file_budget = content_budget * 5 / 100;
+        let code_edge_budget = content_budget * 3 / 100;
+        let parser_budget = content_budget * 8 / 100;
 
-        let mut sym_tok = 0usize;
-        let bounded_symbols: Vec<_> = self
-            .code_graph
-            .symbols
-            .iter()
-            .filter(|symbol| {
-                let parser_tokens = self
-                    .code_graph
-                    .parser_fact(&symbol.id)
-                    .and_then(|fact| serde_json::to_string(&fact.data).ok())
-                    .map_or(0, |raw| estimate_tokens(&raw));
-                let tokens = estimate_tokens(&symbol.name)
-                    + estimate_tokens(&symbol.file)
-                    + parser_tokens
-                    + 20;
-                if sym_tok + tokens <= sym_budget {
-                    sym_tok += tokens;
-                    true
-                } else {
-                    false
-                }
-            })
-            .cloned()
-            .collect();
+        let bounded_symbols = bounded_facts(
+            &self.code_graph.symbols,
+            sym_budget,
+            |left, right| {
+                left.id
+                    .cmp(&right.id)
+                    .then(left.file.cmp(&right.file))
+                    .then(left.name.cmp(&right.name))
+            },
+            |symbol| serialized_fact_tokens(symbol, 20),
+        );
 
-        let mut imp_tok = 0usize;
-        let bounded_imports: Vec<_> = self
-            .code_graph
-            .imports
-            .iter()
-            .filter(|import| {
-                let parser_tokens = self
-                    .code_graph
-                    .parser_fact(&import.id)
-                    .and_then(|fact| serde_json::to_string(&fact.data).ok())
-                    .map_or(0, |raw| estimate_tokens(&raw));
-                let tokens = estimate_tokens(&import.source)
-                    + estimate_tokens(&import.file)
-                    + parser_tokens
-                    + 10;
-                if imp_tok + tokens <= imp_budget {
-                    imp_tok += tokens;
-                    true
-                } else {
-                    false
-                }
-            })
-            .cloned()
-            .collect();
+        let bounded_imports = bounded_facts(
+            &self.code_graph.imports,
+            imp_budget,
+            |left, right| {
+                left.id
+                    .cmp(&right.id)
+                    .then(left.file.cmp(&right.file))
+                    .then(left.source.cmp(&right.source))
+            },
+            |import| serialized_fact_tokens(import, 15),
+        );
 
-        let mut call_tok = 0usize;
-        let bounded_calls: Vec<_> = self
-            .code_graph
-            .calls
-            .iter()
-            .filter(|call| {
-                let parser_tokens = self
-                    .code_graph
-                    .parser_fact(&call.id)
-                    .and_then(|fact| serde_json::to_string(&fact.data).ok())
-                    .map_or(0, |raw| estimate_tokens(&raw));
-                let tokens = estimate_tokens(&call.callee_text)
-                    + estimate_tokens(&call.file)
-                    + parser_tokens
-                    + 15;
-                if call_tok + tokens <= call_budget {
-                    call_tok += tokens;
-                    true
-                } else {
-                    false
-                }
-            })
-            .cloned()
-            .collect();
+        let bounded_calls = bounded_facts(
+            &self.code_graph.calls,
+            call_budget,
+            |left, right| {
+                left.id
+                    .cmp(&right.id)
+                    .then(left.file.cmp(&right.file))
+                    .then(left.callee_text.cmp(&right.callee_text))
+            },
+            |call| serialized_fact_tokens(call, 15),
+        );
 
         let bounded_routes = bounded_facts(
             &self.code_graph.routes,
@@ -236,50 +202,36 @@ impl AgentExport {
             |binding| serialized_fact_tokens(binding, 15),
         );
 
-        let mut bridge_tok = 0usize;
-        let bounded_bridge: Vec<_> = self
-            .bridge
-            .iter()
-            .filter(|edge| {
-                let tokens = estimate_tokens(&edge.from) + estimate_tokens(&edge.to) + 10;
-                if bridge_tok + tokens <= bridge_budget {
-                    bridge_tok += tokens;
-                    true
-                } else {
-                    false
-                }
-            })
-            .cloned()
-            .collect();
+        let bounded_bridge = bounded_facts(
+            &self.bridge,
+            bridge_budget,
+            |left, right| {
+                left.from
+                    .cmp(&right.from)
+                    .then(left.to.cmp(&right.to))
+                    .then(format!("{:?}", left.edge_type).cmp(&format!("{:?}", right.edge_type)))
+            },
+            |edge| serialized_fact_tokens(edge, 15),
+        );
 
-        // DocNode metadata is compact, so it is safe to retain full nodes.
-        let mut doc_tok = 0usize;
-        let bounded_docs: Vec<_> = self
-            .doc_graph
-            .nodes
-            .iter()
-            .filter(|doc| {
-                let tokens = estimate_tokens(&doc.title) + estimate_tokens(&doc.path) + 20;
-                if doc_tok + tokens <= doc_budget {
-                    doc_tok += tokens;
-                    true
-                } else {
-                    false
-                }
-            })
-            .cloned()
-            .collect();
+        let bounded_docs = bounded_facts(
+            &self.doc_graph.nodes,
+            doc_budget,
+            |left, right| left.id.cmp(&right.id).then(left.path.cmp(&right.path)),
+            |doc| serialized_fact_tokens(doc, 20),
+        );
 
         // Parser results are raw parser provenance, not a second representation
         // of semantic facts. Keep only parser facts for retained normalized
-        // symbols, imports, and calls.
+        // symbols, imports, and calls, then budget the complete result,
+        // including backend metadata and diagnostics.
         let retained_fact_ids = bounded_symbols
             .iter()
             .map(|fact| fact.id.clone())
             .chain(bounded_imports.iter().map(|fact| fact.id.clone()))
             .chain(bounded_calls.iter().map(|fact| fact.id.clone()))
             .collect::<std::collections::HashSet<_>>();
-        let bounded_parser_results = self
+        let parser_candidates = self
             .code_graph
             .parser_results
             .iter()
@@ -290,7 +242,14 @@ impl AgentExport {
                     .retain(|fact| retained_fact_ids.contains(fact.id.as_str()));
                 (!result.facts.is_empty()).then_some(result)
             })
-            .collect();
+            .collect::<Vec<_>>();
+        let bounded_parser_results = bounded_facts(
+            &parser_candidates,
+            parser_budget,
+            |left, right| left.file.cmp(&right.file),
+            |result| serialized_fact_tokens(result, 20),
+        );
+
         let retained_files = bounded_symbols
             .iter()
             .map(|fact| fact.file.as_str())
@@ -299,43 +258,74 @@ impl AgentExport {
             .chain(bounded_routes.iter().map(|fact| fact.file.as_str()))
             .chain(bounded_type_impls.iter().map(|fact| fact.file.as_str()))
             .chain(bounded_di_bindings.iter().map(|fact| fact.file.as_str()))
+            .chain(
+                bounded_parser_results
+                    .iter()
+                    .map(|result| result.file.as_str()),
+            )
             .collect::<std::collections::HashSet<_>>();
-        let bounded_files = self
-            .code_graph
-            .files
-            .iter()
-            .filter(|file| retained_files.contains(file.path.as_str()))
-            .cloned()
-            .collect::<Vec<_>>();
+        let bounded_files = bounded_facts(
+            &self
+                .code_graph
+                .files
+                .iter()
+                .filter(|file| retained_files.contains(file.path.as_str()))
+                .cloned()
+                .collect::<Vec<_>>(),
+            file_budget,
+            |left, right| left.path.cmp(&right.path),
+            |file| serialized_fact_tokens(file, 10),
+        );
+
         let retained_nodes = bounded_symbols
             .iter()
             .map(|fact| fact.id.as_str())
+            .chain(bounded_imports.iter().map(|fact| fact.id.as_str()))
+            .chain(bounded_calls.iter().map(|fact| fact.id.as_str()))
             .chain(bounded_files.iter().map(|file| file.path.as_str()))
             .collect::<std::collections::HashSet<_>>();
-        let bounded_edges = self
-            .code_graph
-            .edges
-            .iter()
-            .filter(|edge| {
-                retained_nodes.contains(edge.from.as_str())
-                    || retained_nodes.contains(edge.to.as_str())
-            })
-            .cloned()
-            .collect::<Vec<_>>();
+        let bounded_edges = bounded_facts(
+            &self
+                .code_graph
+                .edges
+                .iter()
+                .filter(|edge| {
+                    retained_nodes.contains(edge.from.as_str())
+                        && retained_nodes.contains(edge.to.as_str())
+                })
+                .cloned()
+                .collect::<Vec<_>>(),
+            code_edge_budget,
+            |left, right| {
+                left.from
+                    .cmp(&right.from)
+                    .then(left.to.cmp(&right.to))
+                    .then(format!("{:?}", left.edge_type).cmp(&format!("{:?}", right.edge_type)))
+            },
+            |edge| serialized_fact_tokens(edge, 10),
+        );
+
         let bounded_doc_ids = bounded_docs
             .iter()
             .map(|doc| doc.id.as_str())
             .collect::<std::collections::HashSet<_>>();
-        let bounded_doc_edges = self
-            .doc_graph
-            .edges
-            .iter()
-            .filter(|edge| {
-                bounded_doc_ids.contains(edge.from.as_str())
-                    && bounded_doc_ids.contains(edge.to.as_str())
-            })
-            .cloned()
-            .collect::<Vec<_>>();
+        let bounded_doc_edges = bounded_facts(
+            &self
+                .doc_graph
+                .edges
+                .iter()
+                .filter(|edge| bounded_doc_ids.contains(edge.from.as_str()))
+                .cloned()
+                .collect::<Vec<_>>(),
+            doc_edge_budget,
+            |left, right| {
+                left.from
+                    .cmp(&right.from)
+                    .then(left.to.cmp(&right.to))
+                    .then(format!("{:?}", left.edge_type).cmp(&format!("{:?}", right.edge_type)))
+            },
+            |edge| serialized_fact_tokens(edge, 10),
+        );
         let mut bounded_code_graph = graxus_codemap::CodeGraph::from_parts(
             bounded_files,
             bounded_symbols,
@@ -389,8 +379,9 @@ mod tests {
     use super::*;
     use graxus_codemap::facts::{DIFact, ImplKind, RouteFact, TypeImplFact};
     use graxus_codemap::{
-        CallFact, CallKind, ConfidenceScore, FileNode, FileParserResult, ImportFact, ImportKind,
-        ParserFact, ParserFactKind, ResolutionMethod, SymbolFact, SymbolKind, Visibility,
+        CallFact, CallKind, CodeEdge, CodeEdgeType, ConfidenceScore, FileNode, FileParserResult,
+        ImportFact, ImportKind, ParserDiagnostic, ParserFact, ParserFactKind, ResolutionMethod,
+        SymbolFact, SymbolKind, Visibility,
     };
     use graxus_core::ParserBackend;
 
@@ -555,6 +546,59 @@ mod tests {
             bounded.code_graph.routes[0].middleware,
             vec!["require_auth".to_string()]
         );
+    }
+
+    #[test]
+    fn test_export_bounded_limits_structural_collections_and_metadata() {
+        let mut export = make_export();
+        export.code_graph.files = (0..100)
+            .map(|i| FileNode {
+                path: format!("src/{i}.rs"),
+                language: "rust".into(),
+                hash: "abc".into(),
+                size: 100,
+            })
+            .collect();
+        export.code_graph.edges = (0..100)
+            .map(|_| CodeEdge {
+                from: "sym0".into(),
+                to: "sym0".into(),
+                edge_type: CodeEdgeType::Contains,
+            })
+            .collect();
+        export.doc_graph.edges = (0..100)
+            .map(|i| graxus_docgraph::graph::DocEdge {
+                from: "doc:README".into(),
+                to: format!("tag:{i}"),
+                edge_type: graxus_docgraph::graph::DocEdgeType::HasTag,
+            })
+            .collect();
+        export.code_graph.parser_results[0].diagnostics = vec![
+            ParserDiagnostic {
+                code: "E001".into(),
+                message: "diagnostic payload ".repeat(100),
+                line: 1,
+                column: 1,
+            };
+            20
+        ];
+
+        let max_tokens = 2_000;
+        let bounded = export.export_bounded(max_tokens);
+        let serialized = serde_json::to_string(&bounded).expect("serialize bounded export");
+
+        assert!(bounded.code_graph.files.len() < export.code_graph.files.len());
+        assert!(bounded.code_graph.edges.len() < export.code_graph.edges.len());
+        assert!(bounded.doc_graph.edges.len() < export.doc_graph.edges.len());
+        let input_diagnostics = export.code_graph.parser_results[0].diagnostics.len();
+        let output_diagnostics = bounded
+            .code_graph
+            .parser_results
+            .iter()
+            .map(|result| result.diagnostics.len())
+            .sum::<usize>();
+        assert!(output_diagnostics < input_diagnostics);
+        assert!(estimate_tokens(&serialized) <= max_tokens);
     }
 
     #[test]

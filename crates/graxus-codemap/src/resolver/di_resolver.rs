@@ -53,6 +53,7 @@ pub fn extract_nestjs_di_bindings(file: &str, source: &str) -> Vec<DIFact> {
         return Vec::new();
     };
 
+    let language = nestjs_language(file);
     let root = tree.root_node();
     let mut classes = Vec::new();
     let mut decorators = Vec::new();
@@ -63,7 +64,7 @@ pub fn extract_nestjs_di_bindings(file: &str, source: &str) -> Vec<DIFact> {
 
     let mut facts: Vec<_> = classes
         .into_iter()
-        .filter_map(|class| nestjs_injectable(file, source, class))
+        .filter_map(|class| nestjs_injectable(file, source, language, class))
         .collect();
 
     let module_ranges: Vec<_> = decorators
@@ -78,12 +79,24 @@ pub fn extract_nestjs_di_bindings(file: &str, source: &str) -> Vec<DIFact> {
                 .iter()
                 .any(|(start, end)| *start <= object.start_byte() && object.end_byte() <= *end);
             is_module_provider
-                .then(|| nestjs_use_class_provider(file, source, object))
+                .then(|| nestjs_use_class_provider(file, source, language, object))
                 .flatten()
         }));
     }
 
     resolve_di_bindings(facts)
+}
+
+fn nestjs_language(file: &str) -> &'static str {
+    if file.ends_with(".js")
+        || file.ends_with(".jsx")
+        || file.ends_with(".mjs")
+        || file.ends_with(".cjs")
+    {
+        "javascript"
+    } else {
+        "typescript"
+    }
 }
 
 /// Retain one fact for each semantic DI binding while preserving first-seen source order.
@@ -254,7 +267,7 @@ fn normalize_type(value: &str) -> Option<String> {
     (!normalized.is_empty()).then_some(normalized)
 }
 
-fn nestjs_injectable(file: &str, source: &str, class: Node<'_>) -> Option<DIFact> {
+fn nestjs_injectable(file: &str, source: &str, language: &str, class: Node<'_>) -> Option<DIFact> {
     let decorator = direct_named_decorator(source, class, "Injectable")?;
     let class_name =
         normalize_binding_reference(source_fragment(source, class.child_by_field_name("name")?))?;
@@ -262,7 +275,7 @@ fn nestjs_injectable(file: &str, source: &str, class: Node<'_>) -> Option<DIFact
 
     Some(new_fact(
         file,
-        "typescript",
+        language,
         class_name.clone(),
         class_name,
         lifetime,
@@ -271,7 +284,12 @@ fn nestjs_injectable(file: &str, source: &str, class: Node<'_>) -> Option<DIFact
     ))
 }
 
-fn nestjs_use_class_provider(file: &str, source: &str, object: Node<'_>) -> Option<DIFact> {
+fn nestjs_use_class_provider(
+    file: &str,
+    source: &str,
+    language: &str,
+    object: Node<'_>,
+) -> Option<DIFact> {
     let abstract_type =
         normalize_binding_reference(object_property_value(object, source, "provide")?)?;
     let concrete_type =
@@ -282,7 +300,7 @@ fn nestjs_use_class_provider(file: &str, source: &str, object: Node<'_>) -> Opti
 
     Some(new_fact(
         file,
-        "typescript",
+        language,
         abstract_type,
         concrete_type,
         lifetime,
@@ -564,6 +582,32 @@ export class AppModule {}
                 && fact.language == "typescript"
                 && fact.framework == "nestjs"
         }));
+    }
+
+    #[test]
+    fn extracts_nestjs_javascript_facts_with_javascript_language() {
+        let source = r#"
+@Injectable()
+class CacheService {}
+
+@Module({
+  providers: [
+    { provide: "CACHE", useClass: CacheService },
+  ],
+})
+class AppModule {}
+"#;
+
+        let facts = extract_di_bindings("src/app.module.js", source);
+
+        assert_eq!(facts.len(), 2);
+        assert!(facts.iter().all(|fact| {
+            fact.file == "src/app.module.js"
+                && fact.language == "javascript"
+                && fact.framework == "nestjs"
+        }));
+        assert_eq!(facts[0].concrete_type, "CacheService");
+        assert_eq!(facts[1].abstract_type, "CACHE");
     }
 
     #[test]
