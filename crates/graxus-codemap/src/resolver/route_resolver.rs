@@ -9,18 +9,29 @@ use crate::{facts::RouteFact, SymbolFact};
 /// overloads or same-named functions would mislead downstream impact analysis.
 pub fn resolve_routes(mut routes: Vec<RouteFact>, symbols: &[SymbolFact]) -> Vec<RouteFact> {
     for route in &mut routes {
-        if route.handler_file.is_some() || route.handler.is_empty() {
+        if route.handler.is_empty() {
             continue;
         }
 
         let mut matches = symbols.iter().filter(|symbol| symbol.name == route.handler);
         let same_file = matches.clone().find(|symbol| symbol.file == route.file);
-        route.handler_file = same_file
-            .or_else(|| {
-                let first = matches.next()?;
-                matches.next().is_none().then_some(first)
-            })
-            .map(|symbol| symbol.file.clone());
+        let resolved = same_file.or_else(|| {
+            let first = matches.next()?;
+            matches.next().is_none().then_some(first)
+        });
+
+        if let Some(symbol) = resolved {
+            route.handler_file = Some(symbol.file.clone());
+        } else if route.handler_file.as_deref().is_some_and(|file| {
+            symbols
+                .iter()
+                .any(|symbol| symbol.file == file && symbol.name == route.handler)
+        }) {
+            // Preserve an explicit same-file link when the current symbol set
+            // still contains its target.
+        } else {
+            route.handler_file = None;
+        }
     }
 
     routes.sort_by(|left, right| {
@@ -108,6 +119,16 @@ mod tests {
                 symbol("src/b.rs", "list_users"),
             ],
         );
+
+        assert_eq!(routes[0].handler_file, None);
+    }
+
+    #[test]
+    fn clears_stale_handler_file_when_target_disappears() {
+        let mut stale = route("src/routes.rs", "list_users");
+        stale.handler_file = Some("src/old_handlers.rs".into());
+
+        let routes = resolve_routes(vec![stale], &[]);
 
         assert_eq!(routes[0].handler_file, None);
     }

@@ -164,8 +164,9 @@ pub fn try_extract(
     let mut type_impls = Vec::new();
     let symbols = symbols
         .into_iter()
-        .map(|(mut fact, data, symbol_type_impls)| {
-            fact.id = format!("symbol:{rel}:{}", fact.name);
+        .enumerate()
+        .map(|(i, (mut fact, data, symbol_type_impls))| {
+            fact.id = format!("symbol:{rel}:{}:{}:{i}", fact.name, fact.line_start);
             type_impls.extend(symbol_type_impls);
             parser_facts.push(ParserFact {
                 id: fact.id.clone(),

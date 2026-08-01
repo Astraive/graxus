@@ -414,7 +414,7 @@ mod tests {
         let tree = parse_c(source);
         let indexer = CIndexer::new();
         let calls = indexer.extract_calls(&tree, source, "test.c");
-        assert!(calls.len() >= 1);
+        assert!(!calls.is_empty());
         assert!(calls.iter().any(|c| c.callee_text == "printf"));
     }
 }

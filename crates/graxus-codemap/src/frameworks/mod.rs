@@ -76,6 +76,9 @@ pub fn extract_routes(file: &str, source: &str, language: &str) -> Vec<RouteFact
         _ => Vec::new(),
     };
 
+    for route in &mut routes {
+        route.language = language.to_string();
+    }
     routes.sort_by(|left, right| {
         (
             left.framework.as_str(),

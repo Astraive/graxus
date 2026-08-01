@@ -304,7 +304,9 @@ mod tests {
         let file = base.join("test.txt");
         std::fs::write(&file, "content").unwrap();
 
-        store.create_snapshot("snap1", &[file.clone()]).unwrap();
+        store
+            .create_snapshot("snap1", std::slice::from_ref(&file))
+            .unwrap();
         store.create_snapshot("snap2", &[file]).unwrap();
 
         let metas = store.list_snapshots().unwrap();

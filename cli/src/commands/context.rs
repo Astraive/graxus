@@ -1,7 +1,10 @@
 use anyhow::Result;
 use colored::Colorize;
+use graxus_agent_api::{AgentExport, BridgeBuilder};
+use graxus_codemap::CodeGraph;
 use graxus_core::{scanner, workspace};
 use graxus_docgraph::graph::DocGraph;
+use std::path::Path;
 
 use crate::context::CliContext;
 
@@ -131,46 +134,64 @@ pub fn run(
             }
         }
 
-        // Check codemap
-        let codemap_path = workspace::code_dir(&root).join("codemap.json");
-        if let Ok(content) = std::fs::read_to_string(&codemap_path) {
-            if let Ok(codemap) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(files) = codemap.get("files").and_then(|v| v.as_array()) {
-                    for file_data in files {
-                        let path = file_data.get("file").and_then(|v| v.as_str()).unwrap_or("");
-                        if !path.contains(f) {
-                            continue;
-                        }
-                        println!("\n  {} {}", "Code:".cyan().bold(), path);
-                        if let Some(defs) = file_data.get("definitions").and_then(|v| v.as_array())
-                        {
-                            if !defs.is_empty() {
-                                println!("    Definitions:");
-                                for def in defs {
-                                    let name =
-                                        def.get("name").and_then(|v| v.as_str()).unwrap_or("?");
-                                    let kind =
-                                        def.get("kind").and_then(|v| v.as_str()).unwrap_or("?");
-                                    println!("      {} {}", kind, name);
-                                }
-                            }
-                        }
-                        if let Some(imports) = file_data.get("imports").and_then(|v| v.as_array()) {
-                            if !imports.is_empty() {
-                                println!("    Imports:");
-                                for imp in imports {
-                                    let source = imp
-                                        .get("fact")
-                                        .and_then(|v| v.get("source"))
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or("?");
-                                    println!("      {}", source);
-                                }
-                            }
-                        }
-                    }
+        if let Some(codemap) = load_code_graph(&root) {
+            let matching_files = codemap
+                .files
+                .iter()
+                .filter(|file| file.path.contains(f))
+                .collect::<Vec<_>>();
+            for file_data in matching_files {
+                println!("\n  {} {}", "Code:".cyan().bold(), file_data.path);
+                let symbols = codemap
+                    .symbols
+                    .iter()
+                    .filter(|symbol| symbol.file == file_data.path);
+                for symbol in symbols {
+                    println!(
+                        "    {:?} {} (line {})",
+                        symbol.kind, symbol.name, symbol.line_start
+                    );
+                }
+                let imports = codemap
+                    .imports
+                    .iter()
+                    .filter(|import| import.file == file_data.path);
+                for import in imports {
+                    println!("    Import: {}", import.source);
+                }
+                for route in codemap
+                    .routes
+                    .iter()
+                    .filter(|route| route.file == file_data.path)
+                {
+                    println!(
+                        "    Route: {} {} -> {}",
+                        route.method, route.path, route.handler
+                    );
+                }
+                for type_impl in codemap
+                    .type_impls
+                    .iter()
+                    .filter(|fact| fact.file == file_data.path)
+                {
+                    println!(
+                        "    Type: {} -> {}",
+                        type_impl.implementing_type, type_impl.trait_or_interface
+                    );
+                }
+                for binding in codemap
+                    .di_bindings
+                    .iter()
+                    .filter(|fact| fact.file == file_data.path)
+                {
+                    println!(
+                        "    DI: {} -> {}",
+                        binding.abstract_type, binding.concrete_type
+                    );
                 }
             }
+        } else {
+            println!("  Codemap not found. Run `graxus index` first.");
         }
     } else if let Some(s) = symbol {
         // Symbol-based context: find symbol across codebase
@@ -181,27 +202,49 @@ pub fn run(
                 .bold()
         );
 
-        let codemap_path = workspace::code_dir(&root).join("codemap.json");
-        if let Ok(content) = std::fs::read_to_string(&codemap_path) {
-            if let Ok(codemap) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(files) = codemap.get("files").and_then(|v| v.as_array()) {
-                    for file_data in files {
-                        let path = file_data.get("file").and_then(|v| v.as_str()).unwrap_or("");
-                        if let Some(defs) = file_data.get("definitions").and_then(|v| v.as_array())
-                        {
-                            for def in defs {
-                                let name = def.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                                if name == s {
-                                    let kind =
-                                        def.get("kind").and_then(|v| v.as_str()).unwrap_or("?");
-                                    let line =
-                                        def.get("line_start").and_then(|v| v.as_u64()).unwrap_or(0);
-                                    println!("  {} {} in {} (line {})", kind, name, path, line);
-                                }
-                            }
-                        }
-                    }
+        if let Some(codemap) = load_code_graph(&root) {
+            let mut found = false;
+            for symbol in codemap.symbols.iter().filter(|symbol| symbol.name == s) {
+                found = true;
+                println!(
+                    "  {:?} {} in {} (line {})",
+                    symbol.kind, symbol.name, symbol.file, symbol.line_start
+                );
+                for route in codemap
+                    .routes
+                    .iter()
+                    .filter(|route| route.handler == symbol.name)
+                {
+                    println!(
+                        "    Route: {} {} ({})",
+                        route.method, route.path, route.framework
+                    );
                 }
+            }
+            for type_impl in codemap
+                .type_impls
+                .iter()
+                .filter(|fact| fact.implementing_type == s || fact.trait_or_interface == s)
+            {
+                found = true;
+                println!(
+                    "  Type: {} -> {} in {}",
+                    type_impl.implementing_type, type_impl.trait_or_interface, type_impl.file
+                );
+            }
+            for binding in codemap
+                .di_bindings
+                .iter()
+                .filter(|fact| fact.abstract_type == s || fact.concrete_type == s)
+            {
+                found = true;
+                println!(
+                    "  DI: {} -> {} in {}",
+                    binding.abstract_type, binding.concrete_type, binding.file
+                );
+            }
+            if !found {
+                println!("  No symbol or semantic fact found for \"{}\"", s);
             }
         } else {
             println!("  Codemap not found. Run `graxus index` first.");
@@ -216,39 +259,62 @@ pub fn run(
     Ok(())
 }
 
-/// Export the full agent context as JSON (config, docs graph, codemap, files).
-pub fn run_export(ctx: &CliContext) -> Result<()> {
+fn load_code_graph(root: &Path) -> Option<CodeGraph> {
+    let codemap_path = workspace::code_dir(root).join("codemap.json");
+    std::fs::read_to_string(codemap_path)
+        .ok()
+        .and_then(|content| serde_json::from_str(&content).ok())
+}
+
+/// Export the full agent context, optionally applying a token budget.
+pub fn run_export(ctx: &CliContext, budget: Option<usize>, json: bool) -> Result<()> {
     let root = ctx.resolve_root()?;
-
     let config = ctx.load_config(&root)?;
-
-    let mut export = serde_json::Map::new();
-
-    // Export config
-    export.insert("config".to_string(), serde_json::to_value(&config)?);
-
-    // Export docs graph
     let docs_dir = workspace::docs_dir(&root);
-    if let Ok(graph) = DocGraph::load(&docs_dir) {
-        export.insert("docs_graph".to_string(), serde_json::to_value(&graph)?);
-    }
-
-    // Export codemap
+    let doc_graph = DocGraph::load(&docs_dir).unwrap_or_default();
     let codemap_path = workspace::code_dir(&root).join("codemap.json");
-    if let Ok(content) = std::fs::read_to_string(&codemap_path) {
-        if let Ok(codemap) = serde_json::from_str::<serde_json::Value>(&content) {
-            export.insert("codemap".to_string(), codemap);
-        }
-    }
+    let code_graph = std::fs::read_to_string(&codemap_path)
+        .ok()
+        .and_then(|content| serde_json::from_str::<CodeGraph>(&content).ok())
+        .unwrap_or_default();
+    let bridge = BridgeBuilder::build(&doc_graph, &code_graph).unwrap_or_default();
+    let export = AgentExport::new(&config.project.name, doc_graph, code_graph, bridge);
+    let export = budget
+        .map(|max_tokens| export.export_bounded(max_tokens))
+        .unwrap_or(export);
 
-    // Export file list
-    let files_path = root.join(".graxus").join("files.json");
-    if let Ok(content) = std::fs::read_to_string(&files_path) {
-        if let Ok(files) = serde_json::from_str::<serde_json::Value>(&content) {
-            export.insert("files".to_string(), files);
+    if json {
+        if budget.is_none() {
+            let mut compatibility = serde_json::Map::new();
+            compatibility.insert("config".into(), serde_json::to_value(&config)?);
+            compatibility.insert(
+                "docs_graph".into(),
+                serde_json::to_value(&export.doc_graph)?,
+            );
+            compatibility.insert("codemap".into(), serde_json::to_value(&export.code_graph)?);
+            let files_path = root.join(".graxus").join("files.json");
+            if let Ok(content) = std::fs::read_to_string(files_path) {
+                if let Ok(files) = serde_json::from_str(&content) {
+                    compatibility.insert("files".into(), files);
+                }
+            }
+            println!("{}", serde_json::to_string_pretty(&compatibility)?);
+        } else {
+            println!("{}", serde_json::to_string_pretty(&export)?);
         }
+    } else {
+        let stats = export.stats();
+        println!("{}", "=== Agent Export ===".green().bold());
+        println!("  Project: {}", export.project_name);
+        println!("  Files: {}", stats.code_files);
+        println!("  Symbols: {}", stats.symbols);
+        println!("  Imports: {}", stats.imports);
+        println!("  Calls: {}", stats.calls);
+        println!("  Routes: {}", stats.routes);
+        println!("  Type implementations: {}", stats.type_impls);
+        println!("  DI bindings: {}", stats.di_bindings);
+        println!("  Documentation nodes: {}", stats.doc_nodes);
+        println!("  Bridge edges: {}", stats.bridge_edges);
     }
-
-    println!("{}", serde_json::to_string_pretty(&export)?);
     Ok(())
 }

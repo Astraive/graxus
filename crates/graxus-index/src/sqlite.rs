@@ -514,6 +514,23 @@ impl SqliteStore {
 
     // ── Delete methods ─────────────────────────────────────────────
 
+    /// Delete all indexed code facts and parser data for a full rebuild.
+    ///
+    /// Documentation and metadata tables are intentionally preserved.
+    pub fn clear_code_data(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "DELETE FROM parser_facts;
+             DELETE FROM parser_results;
+             DELETE FROM symbols;
+             DELETE FROM imports;
+             DELETE FROM calls;
+             DELETE FROM routes;
+             DELETE FROM type_impls;
+             DELETE FROM di_bindings;",
+        )?;
+        Ok(())
+    }
+
     /// Delete all indexed code, semantic facts, and parser data for a file path.
     pub fn delete_file_data(&self, path: &str) -> Result<()> {
         self.conn
@@ -1190,5 +1207,136 @@ mod tests {
             .get_parser_facts_by_file("src/view.tsx")
             .unwrap()
             .is_empty());
+    }
+    #[test]
+    fn test_clear_code_data_removes_code_facts_but_preserves_metadata() {
+        let path = temp_db();
+        let store = SqliteStore::new(&path).unwrap();
+
+        store
+            .insert_file("src/keep.rs", "rust", "hash", 10, "2026-01-01")
+            .unwrap();
+        store.set_metadata("version", "test").unwrap();
+        store
+            .insert_symbol(
+                "symbol:stale",
+                "src/stale.rs",
+                "rust",
+                "function",
+                "stale",
+                false,
+                1,
+                1,
+                "private",
+                "fn stale()",
+                false,
+                0,
+            )
+            .unwrap();
+        store
+            .insert_import(
+                "import:stale",
+                "src/stale.rs",
+                "rust",
+                "use",
+                "std::io",
+                None,
+                None,
+                None,
+                1,
+                "high",
+            )
+            .unwrap();
+        store
+            .insert_call(
+                "call:stale",
+                "src/stale.rs",
+                "rust",
+                "function",
+                None,
+                "stale",
+                None,
+                None,
+                1,
+                1,
+                "high",
+            )
+            .unwrap();
+        store
+            .insert_route(
+                "route:stale",
+                "src/stale.rs",
+                "rust",
+                "GET",
+                "/stale",
+                "stale",
+                None,
+                1,
+                "test",
+                &[],
+            )
+            .unwrap();
+        store
+            .insert_type_impl(
+                "type_impl:stale",
+                "src/stale.rs",
+                "rust",
+                "Stale",
+                "Trait",
+                1,
+                "trait_impl",
+            )
+            .unwrap();
+        store
+            .insert_di_binding(
+                "di:stale",
+                "src/stale.rs",
+                "rust",
+                "Trait",
+                "Stale",
+                Some("singleton"),
+                1,
+                "test",
+            )
+            .unwrap();
+        store
+            .insert_parser_result_value(&serde_json::json!({
+                "file": "src/stale.rs",
+                "requested_backend": "ripex",
+                "used_backend": "ripex",
+                "diagnostics": [],
+                "facts": [{
+                    "id": "parser:stale",
+                    "kind": "symbol",
+                    "data": {}
+                }]
+            }))
+            .unwrap();
+
+        store.clear_code_data().unwrap();
+
+        for table in [
+            "symbols",
+            "imports",
+            "calls",
+            "routes",
+            "type_impls",
+            "di_bindings",
+            "parser_results",
+            "parser_facts",
+        ] {
+            let count: i64 = store
+                .conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(
+                count, 0,
+                "{table} should be empty after a full rebuild reset"
+            );
+        }
+        assert_eq!(store.file_count().unwrap(), 1);
+        assert_eq!(store.get_metadata("version").unwrap(), Some("test".into()));
     }
 }

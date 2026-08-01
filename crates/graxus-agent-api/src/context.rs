@@ -91,7 +91,7 @@ impl ContextBudget {
 
     /// Try to consume tokens. Returns false if would exceed budget.
     pub fn consume(&mut self, tokens: usize) -> bool {
-        if self.used_tokens + tokens > self.max_tokens {
+        if tokens > self.max_tokens.saturating_sub(self.used_tokens) {
             false
         } else {
             self.used_tokens += tokens;
@@ -811,6 +811,14 @@ mod tests {
     }
 
     #[test]
+    fn test_context_budget_rejects_overflow_without_panicking() {
+        let mut budget = ContextBudget::new(usize::MAX);
+        assert!(budget.consume(usize::MAX));
+        assert!(!budget.consume(1));
+        assert_eq!(budget.used_tokens, usize::MAX);
+    }
+
+    #[test]
     fn test_priority_ordering() {
         assert!(Priority::Exact > Priority::Prefix);
         assert!(Priority::Prefix > Priority::Fuzzy);
@@ -820,7 +828,7 @@ mod tests {
 
     #[test]
     fn test_scored_item_sort() {
-        let mut items = vec![
+        let mut items = [
             ScoredItem {
                 item: "a",
                 priority: Priority::Fuzzy,

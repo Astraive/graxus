@@ -12,15 +12,24 @@ use crate::facts::{ImplKind, TypeImplFact};
 /// declared in the source and never speculate about a target declaration.
 pub fn extract_type_impls(file: &str, source: &str, language: &str) -> Vec<TypeImplFact> {
     let language = language.to_ascii_lowercase();
-    let (grammar, declaration_kind) = match language.as_str() {
-        "rust" => (tree_sitter_rust::LANGUAGE.into(), "impl_item"),
+    let (grammar, declaration_kinds): (Language, &[&str]) = match language.as_str() {
+        "rust" => (tree_sitter_rust::LANGUAGE.into(), &["impl_item"]),
         "typescript" => (
             tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-            "class_declaration",
+            &["class_declaration", "interface_declaration"],
         ),
-        "csharp" => (tree_sitter_c_sharp::LANGUAGE.into(), "class_declaration"),
-        "java" => (tree_sitter_java::LANGUAGE.into(), "class_declaration"),
-        "kotlin" => (tree_sitter_kotlin_ng::LANGUAGE.into(), "class_declaration"),
+        "csharp" => (
+            tree_sitter_c_sharp::LANGUAGE.into(),
+            &["class_declaration", "interface_declaration"],
+        ),
+        "java" => (
+            tree_sitter_java::LANGUAGE.into(),
+            &["class_declaration", "interface_declaration"],
+        ),
+        "kotlin" => (
+            tree_sitter_kotlin_ng::LANGUAGE.into(),
+            &["class_declaration", "interface_declaration"],
+        ),
         _ => return Vec::new(),
     };
 
@@ -29,7 +38,7 @@ pub fn extract_type_impls(file: &str, source: &str, language: &str) -> Vec<TypeI
     };
 
     let mut declarations = Vec::new();
-    collect_declarations(tree.root_node(), declaration_kind, &mut declarations);
+    collect_declarations(tree.root_node(), declaration_kinds, &mut declarations);
 
     let mut facts = Vec::new();
     for declaration in declarations {
@@ -82,16 +91,16 @@ fn parse_source(language: Language, source: &str) -> Option<tree_sitter::Tree> {
 
 fn collect_declarations<'tree>(
     node: Node<'tree>,
-    declaration_kind: &str,
+    declaration_kinds: &[&str],
     declarations: &mut Vec<Node<'tree>>,
 ) {
-    if node.kind() == declaration_kind {
+    if declaration_kinds.contains(&node.kind()) {
         declarations.push(node);
     }
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_declarations(child, declaration_kind, declarations);
+        collect_declarations(child, declaration_kinds, declarations);
     }
 }
 
@@ -304,11 +313,15 @@ struct ClassHeader<'a> {
 
 fn class_header(declaration: &str) -> Option<ClassHeader<'_>> {
     let masked_declaration = mask_non_code(declaration);
-    let class_start = find_keyword(&masked_declaration, "class", 0)?;
-    let header_end = find_body_start(&masked_declaration, class_start).unwrap_or(declaration.len());
+    let (declaration_start, declaration_kind) = ["class", "interface"]
+        .into_iter()
+        .filter_map(|kind| find_keyword(&masked_declaration, kind, 0).map(|start| (start, kind)))
+        .min_by_key(|(start, _)| *start)?;
+    let header_end =
+        find_body_start(&masked_declaration, declaration_start).unwrap_or(declaration.len());
     let header = &declaration[..header_end];
     let masked = masked_declaration[..header_end].to_string();
-    let mut name_start = skip_whitespace(&masked, class_start + "class".len());
+    let mut name_start = skip_whitespace(&masked, declaration_start + declaration_kind.len());
     if masked.as_bytes().get(name_start) == Some(&b'@') {
         name_start += 1;
     }
@@ -783,6 +796,27 @@ mod tests {
             "Serializable",
             ImplKind::Implements
         ));
+    }
+
+    #[test]
+    fn extracts_interface_inheritance_across_supported_languages() {
+        let typescript =
+            extract_type_impls("child.ts", "interface Child extends Base {}", "typescript");
+        assert!(has_fact(&typescript, "Child", "Base", ImplKind::Extends));
+
+        let csharp = extract_type_impls("Child.cs", "interface Child : IBase {}", "csharp");
+        assert!(has_fact(
+            &csharp,
+            "Child",
+            "IBase",
+            ImplKind::CSharpInheritance
+        ));
+
+        let java = extract_type_impls("Child.java", "interface Child extends Base {}", "java");
+        assert!(has_fact(&java, "Child", "Base", ImplKind::Extends));
+
+        let kotlin = extract_type_impls("Child.kt", "interface Child : Base", "kotlin");
+        assert!(has_fact(&kotlin, "Child", "Base", ImplKind::Extends));
     }
 
     #[test]

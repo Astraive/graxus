@@ -27,7 +27,7 @@ impl FrameworkResolver for ExpressResolver {
         let mut routes = Vec::new();
         let mut seen = BTreeSet::new();
         visit_nodes(tree.root_node(), &mut |node| {
-            let Some((method, path, handler)) = express_route(node, source) else {
+            let Some((method, path, handler, middleware)) = express_route(node, source) else {
                 return;
             };
 
@@ -43,7 +43,7 @@ impl FrameworkResolver for ExpressResolver {
                     handler_file: None,
                     line,
                     framework: "express".to_owned(),
-                    middleware: Vec::new(),
+                    middleware,
                 });
             }
         });
@@ -122,7 +122,10 @@ where
     }
 }
 
-fn express_route(node: Node<'_>, source: &str) -> Option<(&'static str, String, String)> {
+fn express_route(
+    node: Node<'_>,
+    source: &str,
+) -> Option<(&'static str, String, String, Vec<String>)> {
     if node.kind() != "call_expression" {
         return None;
     }
@@ -141,12 +144,15 @@ fn express_route(node: Node<'_>, source: &str) -> Option<(&'static str, String, 
     let method = http_method(source_text(property, source)?)?;
     let arguments = node.child_by_field_name("arguments")?;
     let path = normalize_path(literal_path(arguments.named_child(0)?, source)?);
-    let handler = (1..arguments.named_child_count())
+    let handler_index = (1..arguments.named_child_count())
         .rev()
-        .find_map(|index| handler_name(arguments.named_child(index)?, source))
-        .unwrap_or_default();
+        .find_map(|index| handler_name(arguments.named_child(index)?, source).map(|_| index))?;
+    let handler = handler_name(arguments.named_child(handler_index)?, source)?;
+    let middleware = (1..handler_index)
+        .filter_map(|index| handler_name(arguments.named_child(index)?, source))
+        .collect();
 
-    Some((method, path, handler))
+    Some((method, path, handler, middleware))
 }
 
 fn is_express_receiver(receiver: &str) -> bool {
@@ -236,6 +242,13 @@ mod tests {
                 ("GET", "/users", "list_users"),
                 ("POST", "/users", "create_user")
             ]
+        );
+        assert_eq!(
+            routes
+                .iter()
+                .find(|route| route.method == "POST")
+                .map(|route| route.middleware.clone()),
+            Some(vec!["require_auth".to_owned()])
         );
         assert!(routes
             .iter()

@@ -78,34 +78,27 @@ impl<'de> Deserialize<'de> for ConfidenceScore {
                         }
                     }
                 }
-                let s = score.unwrap_or(0.0);
+                let normalized = normalized_score(score.unwrap_or(0.0));
                 match (label, method) {
                     (Some(l), Some(m)) => Ok(ConfidenceScore {
-                        score: s.clamp(0.0, 100.0),
+                        score: normalized,
                         label: l,
                         method: m,
                     }),
                     (Some(l), None) => Ok(ConfidenceScore {
-                        score: s.clamp(0.0, 100.0),
+                        score: normalized,
                         label: l,
                         method: ResolutionMethod::Unresolved,
                     }),
-                    (None, Some(m)) => {
-                        let label = match s as u32 {
-                            95..=100 => ConfidenceLabel::Exact,
-                            80..=94 => ConfidenceLabel::High,
-                            60..=79 => ConfidenceLabel::Medium,
-                            35..=59 => ConfidenceLabel::Low,
-                            1..=34 => ConfidenceLabel::Weak,
-                            _ => ConfidenceLabel::Unresolved,
-                        };
-                        Ok(ConfidenceScore {
-                            score: s.clamp(0.0, 100.0),
-                            label,
-                            method: m,
-                        })
-                    }
-                    (None, None) => Ok(ConfidenceScore::new(s, ResolutionMethod::Unresolved)),
+                    (None, Some(m)) => Ok(ConfidenceScore {
+                        score: normalized,
+                        label: label_for_score(normalized),
+                        method: m,
+                    }),
+                    (None, None) => Ok(ConfidenceScore::new(
+                        normalized,
+                        ResolutionMethod::Unresolved,
+                    )),
                 }
             }
         }
@@ -168,20 +161,32 @@ pub enum ResolutionMethod {
     Unresolved,
 }
 
+fn normalized_score(score: f64) -> f64 {
+    if score.is_finite() {
+        score.clamp(0.0, 100.0)
+    } else {
+        0.0
+    }
+}
+
+fn label_for_score(score: f64) -> ConfidenceLabel {
+    match score as u32 {
+        95..=100 => ConfidenceLabel::Exact,
+        80..=94 => ConfidenceLabel::High,
+        60..=79 => ConfidenceLabel::Medium,
+        35..=59 => ConfidenceLabel::Low,
+        1..=34 => ConfidenceLabel::Weak,
+        _ => ConfidenceLabel::Unresolved,
+    }
+}
+
 impl ConfidenceScore {
     /// Create a new confidence score with the given score and resolution method.
     pub fn new(score: f64, method: ResolutionMethod) -> Self {
-        let label = match score as u32 {
-            95..=100 => ConfidenceLabel::Exact,
-            80..=94 => ConfidenceLabel::High,
-            60..=79 => ConfidenceLabel::Medium,
-            35..=59 => ConfidenceLabel::Low,
-            1..=34 => ConfidenceLabel::Weak,
-            _ => ConfidenceLabel::Unresolved,
-        };
+        let score = normalized_score(score);
         Self {
-            score: score.clamp(0.0, 100.0),
-            label,
+            label: label_for_score(score),
+            score,
             method,
         }
     }
@@ -1040,9 +1045,19 @@ impl CodeGraph {
 
     /// Find all calls that target the given symbol ID.
     pub fn calls_to_symbol(&self, symbol_id: &str) -> Vec<&CallFact> {
+        let canonical = self
+            .symbols
+            .iter()
+            .find(|symbol| symbol.id == symbol_id)
+            .map(|symbol| format!("{}::{}", symbol.file, symbol.name));
         self.calls
             .iter()
-            .filter(|c| c.resolved_symbol.as_deref() == Some(symbol_id))
+            .filter(|call| {
+                call.resolved_symbol.as_deref() == Some(symbol_id)
+                    || canonical
+                        .as_deref()
+                        .is_some_and(|key| call.resolved_symbol.as_deref() == Some(key))
+            })
             .collect()
     }
 
@@ -1056,7 +1071,7 @@ impl CodeGraph {
         self.files.iter().map(|f| f.path.as_str()).collect()
     }
 
-    /// Remove all data (file node, symbols, imports, calls) for the given file path.
+    /// Remove all data and relationship edges associated with a file path.
     pub fn remove_file(&mut self, path: &str) {
         self.files.retain(|f| f.path != path);
         self.symbols.retain(|s| s.file != path);
@@ -1070,6 +1085,14 @@ impl CodeGraph {
         self.decorators.retain(|d| d.file != path);
         self.macros.retain(|m| m.file != path);
         self.parser_results.retain(|p| p.file != path);
+        let belongs_to_file = |node: &str| {
+            node == path
+                || node
+                    .strip_prefix(path)
+                    .is_some_and(|suffix| suffix.starts_with("::"))
+        };
+        self.edges
+            .retain(|edge| !belongs_to_file(&edge.from) && !belongs_to_file(&edge.to));
         // Rebuild indexes after removal
         self.indexes = OnceLock::new();
     }
@@ -1100,6 +1123,10 @@ impl CodeGraph {
         self.decorators.extend(other.decorators);
         self.macros.extend(other.macros);
         self.parser_results.extend(other.parser_results);
+        self.routes = resolver::route_resolver::resolve_routes(
+            std::mem::take(&mut self.routes),
+            &self.symbols,
+        );
 
         // Rebuild indexes
         self.indexes = OnceLock::new();
@@ -1430,8 +1457,8 @@ impl CodemapBuilder {
                 for (i, imp) in imports.iter_mut().enumerate() {
                     imp.id = format!("import:{}:{}", rel, i);
                 }
-                for sym in symbols.iter_mut() {
-                    sym.id = format!("symbol:{}:{}", rel, sym.name);
+                for (i, sym) in symbols.iter_mut().enumerate() {
+                    sym.id = format!("symbol:{}:{}:{}:{}", rel, sym.name, sym.line_start, i);
                 }
                 // Calls are assigned a deterministic id keyed on (file, line,
                 // ordinal) so they don't collide on the SQLite `calls.id` PK.
@@ -1502,7 +1529,7 @@ impl CodemapBuilder {
                     .iter()
                     .find(|s| s.line_start <= call_line && call_line <= s.line_end)
                 {
-                    call.caller_symbol = Some(enclosing.name.clone());
+                    call.caller_symbol = Some(format!("{}::{}", enclosing.file, enclosing.name));
                 }
             }
         }
@@ -1621,8 +1648,8 @@ impl CodemapBuilder {
         for (i, imp) in imports.iter_mut().enumerate() {
             imp.id = format!("import:{}:{}", rel, i);
         }
-        for sym in symbols.iter_mut() {
-            sym.id = format!("symbol:{}:{}", rel, sym.name);
+        for (i, sym) in symbols.iter_mut().enumerate() {
+            sym.id = format!("symbol:{}:{}:{}:{}", rel, sym.name, sym.line_start, i);
         }
         for (i, call) in calls.iter_mut().enumerate() {
             call.id = format!("call:{}:{}:{}", rel, call.line, i);

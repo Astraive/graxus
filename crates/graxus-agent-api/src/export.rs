@@ -284,24 +284,69 @@ impl AgentExport {
             .parser_results
             .iter()
             .cloned()
-            .map(|mut result| {
+            .filter_map(|mut result| {
                 result
                     .facts
                     .retain(|fact| retained_fact_ids.contains(fact.id.as_str()));
-                result
+                (!result.facts.is_empty()).then_some(result)
             })
             .collect();
+        let retained_files = bounded_symbols
+            .iter()
+            .map(|fact| fact.file.as_str())
+            .chain(bounded_imports.iter().map(|fact| fact.file.as_str()))
+            .chain(bounded_calls.iter().map(|fact| fact.file.as_str()))
+            .chain(bounded_routes.iter().map(|fact| fact.file.as_str()))
+            .chain(bounded_type_impls.iter().map(|fact| fact.file.as_str()))
+            .chain(bounded_di_bindings.iter().map(|fact| fact.file.as_str()))
+            .collect::<std::collections::HashSet<_>>();
+        let bounded_files = self
+            .code_graph
+            .files
+            .iter()
+            .filter(|file| retained_files.contains(file.path.as_str()))
+            .cloned()
+            .collect::<Vec<_>>();
+        let retained_nodes = bounded_symbols
+            .iter()
+            .map(|fact| fact.id.as_str())
+            .chain(bounded_files.iter().map(|file| file.path.as_str()))
+            .collect::<std::collections::HashSet<_>>();
+        let bounded_edges = self
+            .code_graph
+            .edges
+            .iter()
+            .filter(|edge| {
+                retained_nodes.contains(edge.from.as_str())
+                    || retained_nodes.contains(edge.to.as_str())
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let bounded_doc_ids = bounded_docs
+            .iter()
+            .map(|doc| doc.id.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        let bounded_doc_edges = self
+            .doc_graph
+            .edges
+            .iter()
+            .filter(|edge| {
+                bounded_doc_ids.contains(edge.from.as_str())
+                    && bounded_doc_ids.contains(edge.to.as_str())
+            })
+            .cloned()
+            .collect::<Vec<_>>();
         let mut bounded_code_graph = graxus_codemap::CodeGraph::from_parts(
-            self.code_graph.files.clone(),
+            bounded_files,
             bounded_symbols,
             bounded_imports,
             bounded_calls,
             bounded_routes,
             bounded_type_impls,
             bounded_di_bindings,
-            self.code_graph.edges.clone(),
-            self.code_graph.type_hints.clone(),
-            self.code_graph.variables.clone(),
+            bounded_edges,
+            Vec::new(),
+            Vec::new(),
         );
         bounded_code_graph.parser_results = bounded_parser_results;
 
@@ -309,7 +354,7 @@ impl AgentExport {
             project_name: self.project_name.clone(),
             doc_graph: DocGraph {
                 nodes: bounded_docs,
-                edges: self.doc_graph.edges.clone(),
+                edges: bounded_doc_edges,
             },
             code_graph: bounded_code_graph,
             bridge: bounded_bridge,

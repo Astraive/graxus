@@ -1,6 +1,6 @@
 use anyhow::Result;
 use colored::Colorize;
-use graxus_codemap::CodemapBuilder;
+use graxus_codemap::{facts::ImplKind, CodemapBuilder};
 use graxus_core::{scanner, workspace};
 use graxus_docgraph::graph::DocGraph;
 use graxus_index::{IndexStore, SqliteStore};
@@ -9,6 +9,13 @@ use std::path::Path;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::context::CliContext;
+
+fn impl_kind_name(kind: &ImplKind) -> String {
+    serde_json::to_value(kind)
+        .ok()
+        .and_then(|value| value.as_str().map(ToOwned::to_owned))
+        .unwrap_or_else(|| format!("{kind:?}"))
+}
 
 /// Incremental update: scan for changes and re-index only changed files.
 ///
@@ -203,8 +210,8 @@ pub fn run(ctx: &CliContext, dry_run: bool, full: bool, codemap_backend: String)
                 let _ = db.delete_file_data(path);
             }
 
-            // Re-insert only symbols/imports/calls that belong to a touched
-            // (added or modified) file. Deleted files have no rows to add.
+            // Re-insert only code facts that belong to a touched (added or
+            // modified) file. Deleted files have no rows to add.
             let touched_set: std::collections::HashSet<&str> =
                 touched.iter().map(|s| s.as_str()).collect();
 
@@ -262,6 +269,53 @@ pub fn run(ctx: &CliContext, dry_run: bool, full: bool, codemap_backend: String)
                     &call.confidence.to_string(),
                 );
             }
+            for route in &existing_graph.routes {
+                if !touched_set.contains(route.file.as_str()) {
+                    continue;
+                }
+                let _ = db.insert_route(
+                    &route.id,
+                    &route.file,
+                    &route.language,
+                    &route.method,
+                    &route.path,
+                    &route.handler,
+                    route.handler_file.as_deref(),
+                    route.line,
+                    &route.framework,
+                    &route.middleware,
+                );
+            }
+            for type_impl in &existing_graph.type_impls {
+                if !touched_set.contains(type_impl.file.as_str()) {
+                    continue;
+                }
+                let _ = db.insert_type_impl(
+                    &type_impl.id,
+                    &type_impl.file,
+                    &type_impl.language,
+                    &type_impl.implementing_type,
+                    &type_impl.trait_or_interface,
+                    type_impl.line,
+                    &impl_kind_name(&type_impl.kind),
+                );
+            }
+            for binding in &existing_graph.di_bindings {
+                if !touched_set.contains(binding.file.as_str()) {
+                    continue;
+                }
+                let _ = db.insert_di_binding(
+                    &binding.id,
+                    &binding.file,
+                    &binding.language,
+                    &binding.abstract_type,
+                    &binding.concrete_type,
+                    binding.lifetime.as_deref(),
+                    binding.line,
+                    &binding.framework,
+                );
+            }
+
             for parser_result in &existing_graph.parser_results {
                 if !touched_set.contains(parser_result.file.as_str()) {
                     continue;
@@ -376,10 +430,10 @@ fn run_full_index(
         }
 
         // Save to SQLite. A full re-index must replace any prior contents, so
-        // clear the symbols/imports/calls tables first to stay idempotent across
-        // repeated `update --full` invocations.
+        // clear every code fact table before re-inserting the rebuilt graph.
         let db_path = root.join(".graxus").join("index.db");
         if let Ok(db) = SqliteStore::new(&db_path) {
+            let _ = db.clear_code_data();
             for sym in &graph.symbols {
                 let _ = db.insert_symbol(
                     &sym.id,
@@ -425,6 +479,44 @@ fn run_full_index(
                     &call.confidence.to_string(),
                 );
             }
+            for route in &graph.routes {
+                let _ = db.insert_route(
+                    &route.id,
+                    &route.file,
+                    &route.language,
+                    &route.method,
+                    &route.path,
+                    &route.handler,
+                    route.handler_file.as_deref(),
+                    route.line,
+                    &route.framework,
+                    &route.middleware,
+                );
+            }
+            for type_impl in &graph.type_impls {
+                let _ = db.insert_type_impl(
+                    &type_impl.id,
+                    &type_impl.file,
+                    &type_impl.language,
+                    &type_impl.implementing_type,
+                    &type_impl.trait_or_interface,
+                    type_impl.line,
+                    &impl_kind_name(&type_impl.kind),
+                );
+            }
+            for binding in &graph.di_bindings {
+                let _ = db.insert_di_binding(
+                    &binding.id,
+                    &binding.file,
+                    &binding.language,
+                    &binding.abstract_type,
+                    &binding.concrete_type,
+                    binding.lifetime.as_deref(),
+                    binding.line,
+                    &binding.framework,
+                );
+            }
+
             for parser_result in &graph.parser_results {
                 if let Ok(value) = serde_json::to_value(parser_result) {
                     let _ = db.insert_parser_result_value(&value);
@@ -434,6 +526,11 @@ fn run_full_index(
 
         if let Some(pb) = &pb {
             pb.finish_with_message("Codemap built");
+        }
+    } else {
+        let db_path = root.join(".graxus").join("index.db");
+        if let Ok(db) = SqliteStore::new(&db_path) {
+            let _ = db.clear_code_data();
         }
     }
 

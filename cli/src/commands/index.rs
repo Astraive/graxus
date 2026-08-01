@@ -207,6 +207,7 @@ pub fn run(
         let db_path = root.join(".graxus").join("index.db");
         match graxus_index::sqlite::SqliteStore::new(&db_path) {
             Ok(db) => {
+                let _ = db.clear_code_data();
                 let code_json = root.join(".graxus").join("code").join("codemap.json");
                 if let Ok(content) = std::fs::read_to_string(&code_json) {
                     if let Ok(codemap) = serde_json::from_str::<serde_json::Value>(&content) {

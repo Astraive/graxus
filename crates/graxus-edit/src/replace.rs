@@ -329,7 +329,7 @@ mod tests {
         let preview1 = preview_replace(
             "alpha",
             "omega",
-            &[file.clone()],
+            std::slice::from_ref(&file),
             &ReplaceMode::Literal,
             100,
         )

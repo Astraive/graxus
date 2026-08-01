@@ -915,7 +915,7 @@ fn dispatch(command: Commands, ctx: &CliContext) -> anyhow::Result<()> {
             depth,
             min_confidence,
         ),
-        Commands::AgentExport { budget: _, json: _ } => commands::context::run_export(ctx),
+        Commands::AgentExport { budget, json } => commands::context::run_export(ctx, budget, json),
         Commands::Doctor { json, strict } => commands::doctor::run(ctx, json, strict),
         Commands::Impact {
             target,
