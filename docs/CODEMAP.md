@@ -1,51 +1,23 @@
 # Codemap
 
-`graxus-codemap` owns language-aware source analysis. Ripex is the primary parser and fact extractor for JavaScript/TypeScript, Python, Go, Rust, C, C++, and C#. Tree-sitter remains the per-file fallback when Ripex is unavailable, does not support a language, or fails to extract a file.
+`graxus-codemap` owns language-aware source analysis. Graxus consumes the published [Ripex v0.3.0 parser](https://github.com/astraive/ripex/releases/tag/v0.3.0) as its primary backend and fact extractor for JavaScript/TypeScript, Python, Go, Rust, C, C++, and C#. Tree-sitter remains the per-file fallback when Ripex is unavailable, does not support a language, or fails to extract a file.
 
-The normalized graph contains symbols, imports, calls, variables, and the newer framework-native facts that the CLI can surface as routes, type relationships, and DI bindings. For Ripex files, `parser_results` also preserves:
+For each file, parser provenance records the requested backend, actual backend, fallback reason, diagnostics, and lossless parser-native facts. Each retained parser-native symbol, import, call, and variable payload links to its normalized Graxus fact id.
 
-- the requested and actual backend
-- parse diagnostics
-- the complete parser-native symbol, import, call, and variable payloads
-- a stable link from each parser-native payload to its normalized Graxus fact id
+## Language and framework coverage
 
-This lets CLI, server/LSP, and agent-export consumers use normalized cross-file resolution while retaining Ripex-specific details such as async/constructor flags, base classes, storage and type metadata, import specifiers, and awaited/optional call data.
+The primary Ripex language set is:
 
-Current priority languages are the "big 5" set for repository intelligence:
-
-- Rust
+- JavaScript / TypeScript
 - Python
 - Go
-- TypeScript / JavaScript
-- C / C++ / C#
+- Rust
+- C / C++
+- C#
 
-Parser extraction is separated from cross-file resolution. Select `--codemap-backend tree-sitter` to force the fallback implementation; `ripex` is the default.
+Tree-sitter provides the explicit fallback path, including Java, Kotlin, Swift, and any Ripex-supported file that fails extraction. Select `--codemap-backend tree-sitter` to force tree-sitter; `ripex` is the default.
 
-## Semantic pipeline
-
-For each scanned source file, Graxus records the requested and actual parser
-backend, parser diagnostics, and lossless Ripex facts. It then performs
-cross-file resolution over the normalized graph. Framework extraction is a
-separate post-parser stage: a file is only attributed to a framework when its
-registration syntax, decorator, import/package evidence, or file convention
-identifies that framework. This avoids treating shared method names or
-decorators as routes for every framework.
-
-The complete `CodeGraph` additionally contains:
-
-| Fact | Key fields | Resolution/persistence |
-|------|------------|------------------------|
-| Route | method, path, handler, handler file, framework, middleware | Handler is linked to a same-file or cross-file symbol when resolvable; stored in JSON and SQLite |
-| Type implementation | implementing type, trait/interface, relationship kind | Explicit trait, implementation, and inheritance relationships; stored in JSON and SQLite |
-| DI binding | abstract type, concrete type, lifetime, framework | Semantic contract-to-implementation registration; stored in JSON and SQLite |
-
-IDs for these normalized facts are assigned deterministically by the
-`CodeMapBuilder`, after resolution and deduplication. Parser-native Ripex fact
-identifiers remain linked through `parser_results` rather than being replaced.
-
-## Framework coverage
-
-Route extraction currently recognizes:
+Framework-native extraction is implemented for:
 
 - **Python:** FastAPI, Flask, Django
 - **Rust:** Axum, Actix Web, Rocket
@@ -54,16 +26,22 @@ Route extraction currently recognizes:
 - **C#:** ASP.NET Core minimal APIs and controller attributes
 - **C++:** Crow, Pistache, Drogon
 
-DI extraction recognizes ASP.NET `AddSingleton` / `AddScoped` /
-`AddTransient` registrations and NestJS injectable/provider registrations.
-Type relationship extraction covers explicit Rust trait implementations plus
-TypeScript, C#, Java, and Kotlin inheritance or implementation declarations.
+Express and Next.js preserve JavaScript versus TypeScript route language from the source file. NestJS DI extraction preserves JavaScript or TypeScript for `@Injectable` and `useClass` providers. Type relationships include explicit Rust trait implementations, TypeScript/Java/Kotlin inheritance or implementation declarations, and C# class, record, struct, and interface base/interface lists.
+
+## Semantic pipeline
+
+Parser extraction is separate from cross-file resolution. Framework extraction runs after parsing and requires registration syntax, decorator/attribute, import/package evidence, qualified type, or file convention. This prevents shared method names or decorators from becoming routes for every framework.
+
+The normalized graph contains symbols, imports, calls, variables, routes, type relationships, and DI bindings. Route handlers link to same-file or cross-file symbols only when the target is unambiguous. Type and DI facts retain their source file, line, language, relationship/registration kind, and normalized names.
+
+## Incremental updates and persistence
+
+`graxus update` removes all retained facts and derived edges for changed or deleted files, parses only added/modified files, merges the new graph, and refreshes imports, calls, route handlers, and relationship edges against the complete retained graph. Resolutions are cleared before recomputation so links to removed symbols or files cannot survive an update.
+
+`graxus index` writes the complete graph to `.graxus/code/codemap.json` and rebuilds code data in `.graxus/index.db`. Incremental SQLite updates delete rows for each touched file from symbols, imports, calls, routes, type relationships, DI bindings, parser facts, and parser results before inserting fresh rows.
 
 ## Consumer interfaces
 
-`graxus index` writes the complete graph to `.graxus/code/codemap.json` and
-persists route, type, and DI records to `.graxus/index.db`. The CLI exposes
-routes through `graxus routes` (with `--framework`, `--lang`, and `--json`) and
-relationships plus DI bindings through `graxus types` (with `--name` and
-`--json`). The agent API selects these normalized semantic facts directly for
-file, symbol, topic, text, and bounded export context.
+The CLI exposes routes through `graxus routes` (`--framework`, `--lang`, `--json`) and relationships plus DI bindings through `graxus types` (`--name`, `--json`). The agent API exposes normalized semantic facts in text, file, symbol, and bounded context; parser-native payloads remain in `parser_results` and are not duplicated.
+
+Bounded context and agent exports honor token budgets, deterministic category allocations, and collection caps. Semantic facts are retained as whole records; when a budget is exhausted, the export reports truncation rather than emitting partial facts.

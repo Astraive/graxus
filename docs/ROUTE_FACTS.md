@@ -1,13 +1,11 @@
 # Route Facts
 
-Route facts capture HTTP endpoints as normalized records so Graxus can answer
-questions such as “where is `/api/users/:id` handled?” across languages and
-frameworks.
+Route facts capture HTTP endpoints as normalized records so Graxus can answer questions such as “where is `/api/users/:id` handled?” across languages and frameworks.
 
 Each `RouteFact` contains:
 
 - a deterministic ID assigned by `CodeMapBuilder`
-- registration `file`, `language`, and 1-based `line`
+- registration `file`, source `language`, and 1-based `line`
 - HTTP `method` and source-derived `path`
 - source `handler` and an optional resolved `handler_file`
 - exact `framework`
@@ -15,10 +13,7 @@ Each `RouteFact` contains:
 
 ## Extraction
 
-Framework extraction runs after the language parser and before cross-file
-resolution. Extractors require framework-specific source evidence—such as a
-registration API, decorator, import/package, qualified type, or Next.js
-app-router file convention—so overlapping syntax is not misattributed.
+Framework extraction runs after the language parser and before cross-file resolution. Extractors require framework-specific source evidence—such as a registration API, decorator, import/package, qualified type, or Next.js app-router file convention—so overlapping syntax is not misattributed.
 
 Supported frameworks:
 
@@ -31,17 +26,16 @@ Supported frameworks:
 | C# | ASP.NET Core minimal APIs and controller attributes |
 | C++ | Crow, Pistache, Drogon |
 
-The route resolver links handlers to same-file or cross-file symbols whenever
-the normalized symbol graph provides an unambiguous target. Absence of a
-resolution leaves `handler_file` empty; it does not fabricate a link.
+Express route facts preserve the parser language supplied by the file (`javascript` or `typescript`). Next.js app-router facts derive the same distinction from `.js`/`.jsx`/`.mjs`/`.cjs` versus `.ts`/`.tsx` route files. NestJS controller routes use its TypeScript decorator syntax; NestJS DI facts separately support JavaScript and TypeScript.
 
-## Storage and queries
+The route resolver links handlers to same-file or cross-file symbols whenever the normalized symbol graph provides an unambiguous target. Absence of a resolution leaves `handler_file` empty; it does not fabricate a link.
 
-Routes are written to both `.graxus/code/codemap.json` and the `routes` table
-in `.graxus/index.db` during `graxus index`. Query them with:
+## Storage, updates, and queries
+
+Routes are written to both `.graxus/code/codemap.json` and the `routes` table in `.graxus/index.db` during `graxus index`. During `graxus update`, route rows for changed or deleted files are removed before fresh rows are inserted, while route handlers are re-resolved against the complete retained symbol graph.
 
 ```sh
 graxus routes
-graxus routes --framework fastapi --lang python
+graxus routes --framework express --lang javascript
 graxus routes --json
 ```

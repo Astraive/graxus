@@ -42,5 +42,6 @@ graxus rollback <snapshot-id> --apply
 
 ## Related Notes
 
-* [[ARCHITECTURE]]
-* [[CLI]]
+* [Architecture](ARCHITECTURE.md)
+* [CLI](CLI.md)
+* [Agent context](AGENT_CONTEXT.md)

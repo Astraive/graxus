@@ -1,24 +1,31 @@
 # Changelog
 
-## v0.3.0 (planned)
+## Current workspace (2026-08-01; package version 0.4.0)
 
-### Theme: CLI Standardization & Config UX
+This section records the current Graxus workspace after the Ripex migration and semantic hardening; it is not a Graxus release tag.
 
-- Numeric confidence system (0-100) replacing string labels
-- Confidence label enum: Exact/High/Medium/Low/Weak/Unresolved
-- Resolution method tracking on all facts (local_definition, named_import_exact_export, etc.)
-- Central shared CLI argument structs (GlobalArgs, FileFilterArgs, TraversalArgs, ContextArgs, etc.)
-- Persistent config UX: `graxus config update`, `graxus config set`, `graxus config show --source`
-- Init-time config: `graxus init --max-depth 3 --k 25 --max-notes 50`
-- Config-backed defaults for all commands (CLI flag > env var > graxus.yaml > built-in default)
-- New commands: `graxus rollback`, `graxus regex`, `graxus replace-regex`
-- JSON schema update with confidence objects on all fact types
-- Environment variable overrides (GRAXUS_CONTEXT_BUDGET, GRAXUS_SEARCH_K, etc.)
-- Full command arg standardization (--depth, --max-results, --min-confidence, --budget, --dry-run)
+### Ripex 0.3.0 migration
 
-See `.nstack/plans/v0.3-master-plan.md` for full plan.
+- Graxus now consumes the published [Ripex v0.3.0 release](https://github.com/astraive/ripex/releases/tag/v0.3.0) as its primary parser dependency.
+- Ripex-backed extraction covers JavaScript/TypeScript, Python, Go, Rust, C, C++, and C#. Tree-sitter remains an explicit per-file fallback for unsupported languages and files where Ripex extraction fails.
+- Every parser result records the requested and actual backend, fallback reason, diagnostics, and lossless parser-native facts linked to normalized Graxus facts.
+- Both repository CI pipelines passed after the migration.
 
----
+### Semantic and incremental hardening
+
+- `graxus update` re-indexes added or modified files, removes deleted-file facts, and refreshes imports, calls, route handlers, and relationship edges against the complete retained graph.
+- Incremental SQLite updates delete all code, semantic, and parser rows for each touched file before re-inserting fresh rows, preventing stale or duplicate records. A full `graxus index` clears code tables before rebuilding them.
+- Implemented framework extraction covers FastAPI, Flask, and Django; Axum, Actix Web, and Rocket; Gin, Fiber, and Echo; Express, NestJS, and Next.js app-router; ASP.NET Core; and Crow, Pistache, and Drogon.
+- Express and Next.js route facts preserve JavaScript versus TypeScript source language. NestJS DI facts preserve JavaScript or TypeScript and include injectable classes and `useClass` providers with normalized scopes.
+- Type relationship extraction includes C# class, record, struct, and interface base/interface lists, alongside Rust, TypeScript, Java, and Kotlin relationships.
+
+### CLI, context, and export
+
+- Shared CLI argument handling standardizes `--depth`, `--max-results`, `--min-confidence`, `--budget`, and `--dry-run`; persistent config supports `graxus config update`, `graxus config show`, and provider key management.
+- `graxus routes` and `graxus types` expose normalized semantic facts; `graxus context` and `graxus agent-export` expose them with token, file, symbol, note, depth, confidence, and edge limits.
+- Bounded context and agent exports use deterministic ordering and category budgets for structural facts, routes, type relationships, DI bindings, parser provenance, and documentation without splitting individual facts.
+
+See the [Graxus CLI guide](docs/CLI.md), [codemap pipeline](docs/CODEMAP.md), and [Ripex repository](https://github.com/astraive/ripex) for current interfaces and dependency history.
 
 ## v0.2.0 (2026-05-28)
 
