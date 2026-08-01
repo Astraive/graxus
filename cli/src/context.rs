@@ -90,7 +90,7 @@ impl CliContext {
     /// Load the project configuration.
     ///
     /// If `--config` points at a `graxus.yaml`, load that file directly. The
-    /// config's project root is still resolved separately via [`resolve_root`].
+    /// config's project root is still resolved separately via [`Self::resolve_root`].
     pub fn load_config(&self, root: &Path) -> Result<GraxusConfig> {
         if let Some(config_path) = &self.config {
             let contents = std::fs::read_to_string(config_path)

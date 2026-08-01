@@ -6,7 +6,7 @@
 //! map onto graxus's normalized facts. This module performs that conversion
 //! and retains each complete Ripex fact as a lossless JSON payload.
 //!
-//! Robustness contract: [`try_extract`] must **never panic** and must
+//! Robustness contract: `try_extract` must **never panic** and must
 //! **never crash** the surrounding index. Any failure (missing parser,
 //! unsupported parser or unexpected panic is caught and reported as `Err` so the
 //! caller (`CodemapBuilder::build`) can fall back to the tree-sitter

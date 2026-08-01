@@ -28,7 +28,7 @@ pub struct MacroFact {
 pub enum MacroKind {
     /// Rust macro_rules!
     Declarative,
-    /// Rust proc macro (#[proc_macro], #[proc_macro_derive], #[proc_macro_attribute])
+    /// Rust proc macro (\#\[proc_macro\], \#\[proc_macro_derive\], \#\[proc_macro_attribute\])
     Procedural,
     /// C/C++ #define
     Preprocessor,

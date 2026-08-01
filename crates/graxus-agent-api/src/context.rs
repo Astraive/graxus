@@ -845,7 +845,7 @@ mod tests {
                 tokens: 10,
             },
         ];
-        items.sort_by(|a, b| b.priority.cmp(&a.priority));
+        items.sort_by_key(|item| std::cmp::Reverse(item.priority));
         assert_eq!(items[0].item, "b"); // Exact first
         assert_eq!(items[1].item, "a"); // Fuzzy second
         assert_eq!(items[2].item, "c"); // Bridge third

@@ -624,7 +624,7 @@ fn test_index_store_snapshots() {
 
     // Snapshot
     let snapshot = store
-        .create_snapshot("test-snap", &[test_file.clone()])
+        .create_snapshot("test-snap", std::slice::from_ref(&test_file))
         .unwrap();
     assert_eq!(snapshot.label, "test-snap");
     assert_eq!(snapshot.files.len(), 1);

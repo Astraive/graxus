@@ -1,7 +1,7 @@
 //! Extractor for decorators, attributes, and annotations across languages.
 //!
 //! Handles: Python decorators (@app.get), TypeScript decorators (@Component),
-//! C# attributes ([HttpGet]), Rust attributes (#[route]).
+//! C# attributes (\[HttpGet\]), Rust attributes (\#\[route\]).
 
 use serde::{Deserialize, Serialize};
 
