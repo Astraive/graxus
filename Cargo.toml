@@ -15,10 +15,13 @@ members = [
 ]
 
 [workspace.package]
-version = "0.4.0"
+version = "0.1.0"
 edition = "2021"
 license = "MIT"
-publish = false
+description = "AI-native codebase knowledge engine and semantic code intelligence."
+repository = "https://github.com/Astraive/graxus"
+homepage = "https://github.com/Astraive/graxus"
+publish = true
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

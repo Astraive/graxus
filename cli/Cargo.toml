@@ -3,6 +3,9 @@ name = "graxus-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description.workspace = true
+repository.workspace = true
+homepage.workspace = true
 publish.workspace = true
 
 [[bin]]
@@ -10,16 +13,16 @@ name = "graxus"
 path = "src/main.rs"
 
 [dependencies]
-graxus-core = { path = "../crates/graxus-core" }
-graxus-docgraph = { path = "../crates/graxus-docgraph" }
-graxus-codemap = { path = "../crates/graxus-codemap" }
-graxus-index = { path = "../crates/graxus-index" }
-graxus-edit = { path = "../crates/graxus-edit" }
-graxus-agent-api = { path = "../crates/graxus-agent-api" }
-graxus-embed = { path = "../crates/graxus-embed" }
-graxus-llm = { path = "../crates/graxus-llm" }
-graxus-server = { path = "../crates/graxus-server" }
-graxus-viz = { path = "../crates/graxus-viz" }
+graxus-core = { version = "0.1.0", path = "../crates/graxus-core" }
+graxus-docgraph = { version = "0.1.0", path = "../crates/graxus-docgraph" }
+graxus-codemap = { version = "0.1.0", path = "../crates/graxus-codemap" }
+graxus-index = { version = "0.1.0", path = "../crates/graxus-index" }
+graxus-edit = { version = "0.1.0", path = "../crates/graxus-edit" }
+graxus-agent-api = { version = "0.1.0", path = "../crates/graxus-agent-api" }
+graxus-embed = { version = "0.1.0", path = "../crates/graxus-embed" }
+graxus-llm = { version = "0.1.0", path = "../crates/graxus-llm" }
+graxus-server = { version = "0.1.0", path = "../crates/graxus-server" }
+graxus-viz = { version = "0.1.0", path = "../crates/graxus-viz" }
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true

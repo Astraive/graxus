@@ -3,6 +3,9 @@ name = "graxus-docgraph"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description.workspace = true
+repository.workspace = true
+homepage.workspace = true
 publish.workspace = true
 
 [dependencies]
@@ -14,4 +17,4 @@ tracing.workspace = true
 pulldown-cmark.workspace = true
 regex.workspace = true
 chrono.workspace = true
-graxus-core = { path = "../graxus-core" }
+graxus-core = { version = "0.1.0", path = "../graxus-core" }

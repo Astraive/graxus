@@ -1,6 +1,6 @@
 # Changelog
 
-## Current workspace (2026-08-01; package version 0.4.0)
+## Current workspace (2026-08-01; package version 0.1.0)
 
 This section records the current Graxus workspace after the Ripex migration and semantic hardening; it is not a Graxus release tag.
 

@@ -3,6 +3,9 @@ name = "graxus-codemap"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description.workspace = true
+repository.workspace = true
+homepage.workspace = true
 publish.workspace = true
 
 [[bench]]
@@ -29,7 +32,7 @@ tree-sitter-java.workspace = true
 tree-sitter-kotlin-ng.workspace = true
 tree-sitter-swift.workspace = true
 streaming-iterator = "0.1.9"
-graxus-core = { path = "../graxus-core" }
+graxus-core = { version = "0.1.0", path = "../graxus-core" }
 ripex = { workspace = true, optional = true }
 
 [features]
