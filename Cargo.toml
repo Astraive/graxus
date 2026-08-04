@@ -34,7 +34,7 @@ clap = { version = "4", features = ["derive"] }
 walkdir = "2"
 ignore = "0.4"
 sha2 = "0.10"
-pulldown-cmark = "0.12"
+pulldown-cmark = "0.13"
 regex = "1"
 serde_yaml = "0.9"
 tree-sitter = "0.25"
